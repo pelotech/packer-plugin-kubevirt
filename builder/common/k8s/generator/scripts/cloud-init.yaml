@@ -1,0 +1,32 @@
+#cloud-config
+
+ssh_pwauth: True
+chpasswd: { expire: False }
+
+system_info:
+  default_user:
+    name: packer
+    plain_text_passwd: packer
+    home: /home/packer
+    shell: /bin/bash
+    lock_passwd: false
+    gecos: Packer
+    groups: [adm, cdrom, dip, lxd, sudo]
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+
+package_update: true
+package_upgrade: true
+packages:
+#  - ubuntu-desktop-minimal
+  - xrdp
+  - qemu-guest-agent
+
+runcmd:
+  - [ "adduser", "xrdp", "ssl-cert" ]
+  - [ "systemctl", "enable", "xrdp" ]
+  - [ "ufw", "allow", "3389" ]
+  - [ "systemctl", "enable", "--now", "qemu-guest-agent" ]
+
+power_state:
+  mode: reboot
+  message: Rebooting after package installation.

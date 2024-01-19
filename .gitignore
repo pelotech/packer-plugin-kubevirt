@@ -1,0 +1,11 @@
+.idea
+main
+packer-plugin-kubevirt
+**/packer_log*.txt
+**/git_*test.pkr.hcl
+crash.log
+**/*.pkrvars.hcl
+
+dist/*
+.docs/*
+docs.zip

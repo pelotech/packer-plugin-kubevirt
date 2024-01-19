@@ -1,0 +1,15 @@
+- hosts: linux
+  gather_facts: yes
+  become: yes
+  roles:
+    - role: geerlingguy.nginx
+      nginx_listen_ipv6: false
+
+- hosts: windows
+  gather_facts: yes
+  become: yes
+  roles:
+    - role: bit_kitchen.windows_base
+      chocolatey_latest: yes
+      chocolatey_packages:
+        - vlc

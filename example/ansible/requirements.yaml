@@ -1,0 +1,6 @@
+- name: geerlingguy.nginx
+  src: https://github.com/geerlingguy/ansible-role-nginx
+  version: 3.2.0
+- name: bit_kitchen.windows_base
+  src: https://github.com/bit-kitchen/ansible-role-windows-base
+  version: 1.0.0

@@ -1,0 +1,134 @@
+# This is a manually triggered action workflow.
+# It uses Packer at the latest version to init, validate and build
+# an example configuration in a folder.
+name: test plugin
+
+on:
+  push:
+
+env:
+  PRODUCT_VERSION: "1.11.2"
+
+jobs:
+  build:
+    # runs-on: [ "self-hosted", "linux", "x64", "ubuntu-2204" ] # until self-hosted runner is available
+    runs-on: ubuntu-latest
+    name: Run Packer
+    env:
+      working-directory: ./example
+      PKR_VAR_destination_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      PKR_VAR_destination_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: repository checkout
+        uses: actions/checkout@v4
+
+      - name: go setup
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: ./packer-plugin-kubevirt
+          key: build-${{ hashFiles('**/*.go') }}
+
+      - name: packer plugin build
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: go build .
+
+      - name: generate kind config
+        run: |
+          cat <<EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            extraMounts:
+              - hostPath: /dev/kvm
+                containerPath: /dev/kvm
+          EOF
+
+      - name: kind setup
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: kind
+          version: v0.24.0
+          kubectl_version: v1.30.4
+          config: kind-config.yaml
+
+      - name: kubevirt+cdi install
+        run: |
+          export KUBEVIRT_VERSION=$(curl -s https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt)
+          kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml"
+          kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml"
+
+          export CDI_VERSION=$(basename $(curl -s -w %{redirect_url} https://github.com/kubevirt/containerized-data-importer/releases/latest))
+          kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-operator.yaml
+          kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-cr.yaml
+
+          kubectl wait --for=jsonpath='{.status.phase}'=Deployed kubevirt/kubevirt --namespace kubevirt --timeout=2m
+          kubectl wait --for=jsonpath='{.status.phase}'=Deployed cdi/cdi --namespace cdi --timeout=2m
+
+          kubectl apply -k "https://github.com/kubevirt/common-instancetypes/VirtualMachineClusterPreferences?ref=v1.1.0"
+          # to skip '/dev/kvm' requirement - but requires testing with custom node and host volume mounting
+          # kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'
+
+      - name: display runner node / capabilities
+        run: |
+          # Print CPU information
+          echo "CPU Information:"
+          echo "----------------"
+          lscpu | grep -E '^Architecture|^CPU\(s\)|^Model name|^Thread|^Core|^Socket|^Vendor ID'
+          echo ""
+
+          # Print Memory information
+          echo "Memory Information:"
+          echo "-------------------"
+          free -h
+          echo ""
+
+          # Print Disk Space information
+          echo "Disk Space Information:"
+          echo "-----------------------"
+          df -hT | awk '{print $1, $2, $3, $4, $5, $6, $7}'
+          echo ""
+
+          echo "KVM module state:"
+          echo "-----------------------"
+          if lsmod | grep -q kvm; then
+            echo "KVM modules are loaded."
+          else
+            echo "KVM modules are not loaded."
+          fi
+          echo ""
+
+          echo "Kubernetes worker nodes:"
+          echo "-----------------------"
+          kubectl get nodes -o jsonpath='{range .items[*]}{"["}{.metadata.name}{"] cpu: "}{.status.capacity.cpu}{"; memory: "}{.status.capacity.memory}{"\n"}{end}'
+
+      - name: packer setup
+        uses: hashicorp/setup-packer@v3.1.0
+        with:
+          version: ${{ env.PRODUCT_VERSION }}
+
+      - name: packer format
+        run: |
+          packer fmt -check .
+
+      - name: packer init
+        working-directory: ${{ env.working-directory }}
+        run: |
+          packer plugins install --path ../packer-plugin-kubevirt "github.com/pelotech/kubevirt"
+          packer init .
+
+      - name: packer validate
+        working-directory: ${{ env.working-directory }}
+        run: |
+          packer validate .
+
+      - name: packer build
+        if: false # until self-hosted runner is available
+        working-directory: ${{ env.working-directory }}
+        run: |
+          PACKER_LOG=1 packer build .
