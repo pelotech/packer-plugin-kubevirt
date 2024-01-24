@@ -1,12 +1,12 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package scaffolding
+package iso
 
 // packersdk.Artifact implementation
 type Artifact struct {
 	// StateData should store data such as GeneratedData
-	// to be shared with post-processors
+	// to be common with post-processors
 	StateData map[string]interface{}
 }
 

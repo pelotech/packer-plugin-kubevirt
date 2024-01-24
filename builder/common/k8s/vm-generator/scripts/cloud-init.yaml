@@ -1,0 +1,13 @@
+#cloud-config
+
+ssh_pwauth: True
+chpasswd: { expire: False }
+
+package_update: true
+package_upgrade: true
+packages:
+  - qemu-guest-agent
+
+runcmd:
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent

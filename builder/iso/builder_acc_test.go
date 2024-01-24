@@ -1,7 +1,7 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package scaffolding
+package iso
 
 import (
 	_ "embed"
@@ -16,20 +16,20 @@ import (
 )
 
 //go:embed test-fixtures/template.pkr.hcl
-var testProvisionerHCL2Basic string
+var testBuilderHCL2Basic string
 
-// Run with: PACKER_ACC=1 go test -count 1 -v ./provisioner/scaffolding/provisioner_acc_test.go  -timeout=120m
-func TestAccScaffoldingProvisioner(t *testing.T) {
+// Run with: PACKER_ACC=1 go test -count 1 -v ./builder/windows/builder_acc_test.go  -timeout=120m
+func TestAccKubeVirtBuilder(t *testing.T) {
 	testCase := &acctest.PluginTestCase{
-		Name: "scaffolding_provisioner_basic_test",
+		Name: "kubevirt_builder_basic_test",
 		Setup: func() error {
 			return nil
 		},
 		Teardown: func() error {
 			return nil
 		},
-		Template: testProvisionerHCL2Basic,
-		Type:     "scaffolding-my-provisioner",
+		Template: testBuilderHCL2Basic,
+		Type:     "windows-my-builder",
 		Check: func(buildCommand *exec.Cmd, logfile string) error {
 			if buildCommand.ProcessState != nil {
 				if buildCommand.ProcessState.ExitCode() != 0 {
@@ -49,8 +49,8 @@ func TestAccScaffoldingProvisioner(t *testing.T) {
 			}
 			logsString := string(logsBytes)
 
-			provisionerOutputLog := "null.basic-example: provisioner mock: my-mock-config"
-			if matched, _ := regexp.MatchString(provisionerOutputLog+".*", logsString); !matched {
+			buildGeneratedDataLog := "windows-my-builder.basic-example: build generated data: mock-build-data"
+			if matched, _ := regexp.MatchString(buildGeneratedDataLog+".*", logsString); !matched {
 				t.Fatalf("logs doesn't contain expected foo value %q", logsString)
 			}
 			return nil

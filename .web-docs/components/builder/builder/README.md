@@ -38,11 +38,11 @@ a consistent plugin structure.
 
 
 ```hcl
- source "scaffolding" "example" {
+ source "windows" "example" {
    mock = "bird"
  }
 
  build {
-   sources = ["source.scaffolding.example"]
+   sources = ["source.windows.example"]
  }
 ```

@@ -32,15 +32,15 @@ The scaffolding post-processor is used to export Packer Scaffolding builds.
 
 
 ```hcl
- source "scaffolding" "example" {
+ source "windows" "example" {
    mock = "jay"
  }
 
  build {
-   sources = ["source.scaffolding.example"]
+   sources = ["source.windows.example"]
 
    post-processor "scaffolding" {
-     mock = "builds/scaffolding.box"
+     mock = "builds/windows.box"
    }
  }
 ```

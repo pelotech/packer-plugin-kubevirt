@@ -1,22 +1,20 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 //go:generate packer-sdc mapstructure-to-hcl2 -type Config
 
-package scaffolding
+package iso
 
 import (
 	"context"
-
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer-plugin-sdk/common"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
 	"github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"packer-plugin-kubevirt/builder/common/k8s"
+	stepDef "packer-plugin-kubevirt/builder/common/steps"
 )
 
-const BuilderId = "scaffolding.builder"
+const BuilderId = "kubevirt.iso"
 
 type Config struct {
 	common.PackerConfig `mapstructure:",squash"`
@@ -28,16 +26,23 @@ type Builder struct {
 	runner multistep.Runner
 }
 
-func (b *Builder) ConfigSpec() hcldec.ObjectSpec { return b.config.FlatMapstructure().HCL2Spec() }
+func (b *Builder) ConfigSpec() hcldec.ObjectSpec {
+	return b.config.FlatMapstructure().HCL2Spec()
+}
 
 func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings []string, err error) {
 	err = config.Decode(&b.config, &config.DecodeOpts{
-		PluginType:  "packer.builder.scaffolding",
+		PluginType:  BuilderId,
 		Interpolate: true,
 	}, raws...)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// 1. Validate configuration fields
+	// 2. Validate credentials (e.g. kubectl client)
+	// 3. Any computed values (if needed)
+
 	// Return the placeholder for the generated data that will become available to provisioners and post-processors.
 	// If the builder doesn't generate any data, just return an empty slice of string: []string{}
 	buildGeneratedData := []string{"GeneratedMockData"}
@@ -45,16 +50,16 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 }
 
 func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
-	steps := []multistep.Step{}
+	virtClient, _ := k8s.GetKubevirtClient()
 
+	var steps []multistep.Step
 	steps = append(steps,
-		&StepSayConfig{
-			MockConfig: b.config.MockOption,
-		},
+		&stepDef.StepDeployVM{VirtClient: virtClient}, // write file to healthcheck
 		new(commonsteps.StepProvision),
+		&stepDef.StepExportVM{VirtClient: virtClient},
 	)
 
-	// Setup the state bag and initial state for the steps
+	// Set up the state bag and initial state for the steps
 	state := new(multistep.BasicStateBag)
 	state.Put("hook", hook)
 	state.Put("ui", ui)
@@ -79,5 +84,6 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		// can access them.
 		StateData: map[string]interface{}{"generated_data": state.Get("generated_data")},
 	}
+
 	return artifact, nil
 }

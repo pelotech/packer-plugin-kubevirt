@@ -1,13 +1,10 @@
-# Copyright (c) HashiCorp, Inc.
-# SPDX-License-Identifier: MPL-2.0
-
-source "scaffolding-my-builder" "basic-example" {
+source "kubevirt-iso" "ubuntu-base" {
   mock = "mock-config"
 }
 
 build {
   sources = [
-    "source.scaffolding-my-builder.basic-example"
+    "source.kubevirt-iso-builder.ubuntu-base"
   ]
 
   provisioner "shell-local" {

@@ -22,7 +22,7 @@ builds:
     ldflags:
       - '-s -w -X {{ .ModulePath }}/version.Version={{.Version}} -X {{ .ModulePath }}/version.VersionPrerelease= '
     goos:
-      - linux
+      - kubevirt
     goarch:
       - amd64
     binary: '{{ .ProjectName }}_v{{ .Version }}_{{ .Env.API_VERSION }}_{{ .Os }}_{{ .Arch }}'
@@ -38,7 +38,7 @@ builds:
       - openbsd
       - freebsd
       - windows
-      - linux
+      - kubevirt
       - darwin
     goarch:
       - amd64
@@ -50,7 +50,7 @@ builds:
         goarch: arm64
       - goos: darwin
         goarch: '386'
-      - goos: linux
+      - goos: kubevirt
         goarch: amd64
     binary: '{{ .ProjectName }}_v{{ .Version }}_{{ .Env.API_VERSION }}_{{ .Os }}_{{ .Arch }}'
 archives:

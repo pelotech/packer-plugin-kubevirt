@@ -1,10 +1,10 @@
 # Packer Plugin Scaffolding
 
 This repository is a template for a Packer multi-component plugin. It is intended as a starting point for creating Packer plugins, containing:
-- A builder ([builder/scaffolding](builder/scaffolding))
-- A provisioner ([provisioner/scaffolding](provisioner/scaffolding))
-- A post-processor ([post-processor/scaffolding](post-processor/scaffolding))
-- A data source ([datasource/scaffolding](datasource/scaffolding))
+- A builder ([builder/scaffolding](builder/windows))
+- A provisioner ([provisioner/scaffolding](provisioner/kubevirt))
+- A post-processor ([post-processor/scaffolding](post-processor/kubevirt))
+- A data source ([datasource/scaffolding](datasource/kubevirt))
 - Docs ([docs](docs))
 - A working example ([example](example))
 

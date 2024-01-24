@@ -1,30 +1,23 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 package main
 
 import (
 	"fmt"
 	"os"
-	"packer-plugin-scaffolding/builder/scaffolding"
-	scaffoldingData "packer-plugin-scaffolding/datasource/scaffolding"
-	scaffoldingPP "packer-plugin-scaffolding/post-processor/scaffolding"
-	scaffoldingProv "packer-plugin-scaffolding/provisioner/scaffolding"
-	scaffoldingVersion "packer-plugin-scaffolding/version"
+	"packer-plugin-kubevirt/builder/iso"
+	"packer-plugin-kubevirt/post-processor/s3"
+	kubevirtVersion "packer-plugin-kubevirt/version"
 
 	"github.com/hashicorp/packer-plugin-sdk/plugin"
 )
 
 func main() {
 	pps := plugin.NewSet()
-	pps.RegisterBuilder("my-builder", new(scaffolding.Builder))
-	pps.RegisterProvisioner("my-provisioner", new(scaffoldingProv.Provisioner))
-	pps.RegisterPostProcessor("my-post-processor", new(scaffoldingPP.PostProcessor))
-	pps.RegisterDatasource("my-datasource", new(scaffoldingData.Datasource))
-	pps.SetVersion(scaffoldingVersion.PluginVersion)
+	pps.RegisterBuilder("iso", new(iso.Builder))
+	pps.RegisterPostProcessor("s3", new(s3.PostProcessor))
+	pps.SetVersion(kubevirtVersion.PluginVersion)
 	err := pps.Run()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
+		_, _ = fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }

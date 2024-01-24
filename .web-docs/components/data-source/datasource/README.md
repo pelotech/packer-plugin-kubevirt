@@ -50,14 +50,14 @@ a consistent plugin structure.
 
 
 ```hcl
-data "scaffolding" "example" {
+data "windows" "example" {
    mock = "bird"
  }
- source "scaffolding" "example" {
+ source "windows" "example" {
    mock = data.scaffolding.example.foo
  }
 
  build {
-   sources = ["source.scaffolding.example"]
+   sources = ["source.windows.example"]
  }
 ```
