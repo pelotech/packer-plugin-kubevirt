@@ -14,10 +14,17 @@ func GetEnv(key, defaultValue string) string {
 	return value
 }
 
+func GetOrDefault(value, defaultValue int) int {
+	if value == 0 {
+		return defaultValue
+	}
+	return value
+}
+
 func ReadFile(path, filename string) string {
 	scriptData, err := os.ReadFile(filepath.Join(path, filename))
 	if err != nil {
-		log.Printf("Error reading file: %s", err)
+		log.Printf("error reading file: %s", err)
 	}
 
 	return string(scriptData)

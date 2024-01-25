@@ -18,8 +18,10 @@ import (
 
 type Config struct {
 	common.PackerConfig `mapstructure:",squash"`
-	MockOption          string `mapstructure:"mock"`
 	ctx                 interpolate.Context
+	MockOption          string `mapstructure:"mock"`
+	bucket              string `mapstructure:"bucket"`
+	key                 string `mapstructure:"key"`
 }
 
 type PostProcessor struct {

@@ -2,29 +2,23 @@ package steps
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
-	"io"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 	"log"
-	"net/http"
-	"os"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"time"
 )
 
 const (
-	exportTokenHeader = "x-kubevirt-export-token"
 	secretTokenKey    = "token"
 	secretTokenLength = 20
 )
@@ -34,6 +28,7 @@ type StepExportVM struct {
 }
 
 func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
+	ui := state.Get("ui").(packersdk.Ui)
 	ns := state.Get("namespace").(string)
 	name := state.Get("name").(string)
 
@@ -41,72 +36,23 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 	export, err := s.createExport(ns, name, token)
 	if err != nil {
-		log.Printf("Error creating export: %s", err)
+		err := fmt.Errorf("failed to create Virtual Machine Export %s/%s: %s", ns, name, err)
+		state.Put("error", err)
+		ui.Error(err.Error())
+
 		return multistep.ActionHalt
 	}
 
 	err = s.waitForExportReady(ns, name)
 	if err != nil {
-		log.Printf("Error waiting for export to be ready: %s", err)
+		err := fmt.Errorf("failed to wait for Virtual Machine Export to be in a 'Ready' state %s/%s: %s", ns, name, err)
+		state.Put("error", err)
+		ui.Error(err.Error())
+
 		return multistep.ActionHalt
 	}
-
-	// TODO: Option to early return only the export URL without download.
-
-	serviceName := fmt.Sprintf("virt-export-%s", name)
-	service, err := s.VirtClient.CoreV1().Services(ns).Get(context.TODO(), serviceName, metav1.GetOptions{})
-	podSelector := labels.SelectorFromSet(service.Spec.Selector)
-	podList, err := s.VirtClient.CoreV1().Pods(ns).List(context.Background(), metav1.ListOptions{LabelSelector: podSelector.String()})
-	if len(podList.Items) == 0 {
-		log.Printf("Error waiting for export to be ready: %s", err)
-		return multistep.ActionHalt
-	}
-	// TODO: should update export server's service on 8081 (opinionated default) exposed as Packer builder field
-
-	localPort := 8081
-	err = k8s.RunPortForward(s.VirtClient, podList.Items[0].Name, ns, []string{fmt.Sprintf("%d:443", localPort)})
-	if err != nil {
-		log.Printf("Error port-forwarding export endpoint: %s", err)
-		return multistep.ActionHalt
-	}
-
-	exportUrl := fmt.Sprintf("127.0.0.1:%d", localPort)
-	cert := export.Status.Links.Internal.Cert
-	err = downloadExport(exportUrl, name, token, cert)
-	// TODO: No mention to desired volume to be downloaded / exported => digging in KubeVirt code required
 
 	return multistep.ActionContinue
-}
-
-func downloadExport(sourceURL, destinationFilepath, exportToken, endpointCert string) error {
-	out, err := os.Create(destinationFilepath)
-	defer out.Close()
-
-	roots := x509.NewCertPool()
-	roots.AppendCertsFromPEM([]byte(endpointCert))
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: roots},
-	}
-	client := &http.Client{Transport: transport}
-
-	req, err := http.NewRequest("GET", sourceURL, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set(exportTokenHeader, exportToken)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (s *StepExportVM) createExport(ns, name, token string) (*exportv1.VirtualMachineExport, error) {

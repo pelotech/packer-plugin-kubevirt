@@ -6,20 +6,19 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
+	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"strings"
 )
 
 type VirtualMachineOptions struct {
-	Name                    string
-	Namespace               string
-	OsPreference            string
-	S3ImageSource           S3ImageSource
-	Credentials             *AccessCredentials
-	DiskSpace               string
-	StartupScriptSecretName string
+	Name          string
+	Namespace     string
+	OsPreference  string
+	S3ImageSource S3ImageSource
+	Credentials   *AccessCredentials
+	DiskSpace     string
 }
 
 type AccessCredentials struct {
@@ -28,8 +27,9 @@ type AccessCredentials struct {
 }
 
 type S3ImageSource struct {
-	Url        string
-	SecretName string
+	Url                string
+	AwsAccessKeyId     string
+	AwsSecretAccessKey string
 }
 
 type OsFamily int32
@@ -39,14 +39,47 @@ const (
 	Windows          = 1
 )
 
-func GetOSFamily(preference string) OsFamily {
+type SecretSuffix string
+
+const (
+	StartupScriptSecretSuffix SecretSuffix = "startup-scripts"
+	UserCredentialsSuffix     SecretSuffix = "user-credentials"
+	S3CredentialsSuffix       SecretSuffix = "s3-credentials"
+)
+
+func buildSecretName(vmName string, suffix SecretSuffix) string {
+	return fmt.Sprintf("%s-%s", vmName, suffix)
+}
+
+type VolumeDiskMapping string
+
+const (
+	PrimaryVolumeDiskMapping       VolumeDiskMapping = "primary"
+	CloudInitVolumeDiskMapping     VolumeDiskMapping = "cloud-init"
+	SysprepInitVolumeDiskMapping   VolumeDiskMapping = "sysprep-init"
+	IsoInstallVolumeDiskMapping    VolumeDiskMapping = "iso-install"
+	VirtioDriversVolumeDiskMapping VolumeDiskMapping = "virtio-drivers"
+)
+
+type DataVolumeSuffix string
+
+const (
+	SourceDataVolumeSuffix DataVolumeSuffix = "source"
+	VirtioDataVolumeSuffix DataVolumeSuffix = "virtio-drivers"
+)
+
+func buildDataVolumeName(vmName string, suffix DataVolumeSuffix) string {
+	return fmt.Sprintf("%s-%s", vmName, suffix)
+}
+
+func getOSFamily(preference string) OsFamily {
 	if strings.Contains(strings.ToLower(preference), "windows") {
 		return Windows
 	}
 	return Linux
 }
 
-func generateProbeExecCommand(family OsFamily) []string {
+func buildProbeExecCommand(family OsFamily) []string {
 	var command []string
 	switch family {
 	case Linux:
@@ -71,18 +104,19 @@ func generateProbeExecCommand(family OsFamily) []string {
 
 func GenerateStartupScriptSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
 	data := make(map[string]string)
-	switch GetOSFamily(opts.OsPreference) {
+	scriptsDir := "scripts"
+	switch getOSFamily(opts.OsPreference) {
 	case Linux:
 		filename := "cloud-init.yaml"
-		data["userdata"] = utils.ReadFile("scripts", filename)
+		data["userdata"] = utils.ReadFile(scriptsDir, filename)
 	case Windows:
 		filename := "autounattend.xml"
-		data[filename] = utils.ReadFile("scripts", filename)
+		data[filename] = utils.ReadFile(scriptsDir, filename)
 	}
 
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      opts.StartupScriptSecretName,
+			Name:      buildSecretName(opts.Name, StartupScriptSecretSuffix),
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(vm, k8s.VirtualMachineGroupVersionKind),
@@ -93,7 +127,24 @@ func GenerateStartupScriptSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 	}
 }
 
-func GenerateCredentials(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
+func GenerateS3CredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      buildSecretName(opts.Name, S3CredentialsSuffix),
+			Namespace: opts.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(vm, k8s.VirtualMachineGroupVersionKind),
+			},
+		},
+		StringData: map[string]string{
+			"accessKeyId": opts.S3ImageSource.AwsAccessKeyId,
+			"secretKey":   opts.S3ImageSource.AwsSecretAccessKey,
+		},
+		Type: corev1.SecretTypeOpaque,
+	}
+}
+
+func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
 	password := opts.Credentials.Password
 	if opts.Credentials.Password == "" {
 		password = utils.GenerateRandomPassword(20)
@@ -104,7 +155,7 @@ func GenerateCredentials(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptio
 
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      strings.Join([]string{opts.Name, "credentials"}, "-"),
+			Name:      buildSecretName(opts.Name, UserCredentialsSuffix),
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(vm, k8s.VirtualMachineGroupVersionKind),
@@ -116,15 +167,24 @@ func GenerateCredentials(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptio
 }
 
 func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachine {
-	osFamily := GetOSFamily(opts.OsPreference)
+	osFamily := getOSFamily(opts.OsPreference)
 	disks := generateDisks(osFamily, opts)
 	volumes := generateVolumes(osFamily, opts)
-	probeExecCommand := generateProbeExecCommand(osFamily)
+	probeExecCommand := buildProbeExecCommand(osFamily)
 
 	var accessCredentials []kubevirtv1.AccessCredential
 	if opts.Credentials != nil {
-		secretName := strings.Join([]string{opts.Name, "credentials"}, "-")
+		secretName := buildSecretName(opts.Name, UserCredentialsSuffix)
 		accessCredentials = append(accessCredentials, generateUserPasswordAccessCredential(secretName))
+	}
+
+	var secretName string
+	if opts.S3ImageSource.AwsAccessKeyId != "" && opts.S3ImageSource.AwsSecretAccessKey != "" {
+		secretName = buildSecretName(opts.Name, S3CredentialsSuffix)
+	}
+	dataVolumeSourceS3 := &cdiv1beta1.DataVolumeSourceS3{
+		URL:       opts.S3ImageSource.Url,
+		SecretRef: secretName,
 	}
 
 	return &kubevirtv1.VirtualMachine{
@@ -145,6 +205,8 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 								Command: probeExecCommand,
 							},
 						},
+						InitialDelaySeconds: 30,
+						PeriodSeconds:       10,
 					},
 					AccessCredentials: accessCredentials,
 					Domain: kubevirtv1.DomainSpec{
@@ -164,9 +226,9 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			DataVolumeTemplates: []kubevirtv1.DataVolumeTemplateSpec{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf("%s-source", opts.Name),
+						Name: buildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
 					},
-					Spec: cdiv1.DataVolumeSpec{
+					Spec: cdiv1beta1.DataVolumeSpec{
 						PVC: &corev1.PersistentVolumeClaimSpec{
 							Resources: corev1.VolumeResourceRequirements{
 								Requests: corev1.ResourceList{
@@ -174,19 +236,16 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 								},
 							},
 						},
-						Source: &cdiv1.DataVolumeSource{
-							S3: &cdiv1.DataVolumeSourceS3{
-								URL:       opts.S3ImageSource.Url,
-								SecretRef: opts.S3ImageSource.SecretName,
-							},
+						Source: &cdiv1beta1.DataVolumeSource{
+							S3: dataVolumeSourceS3,
 						},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf("%s-virtio-drivers", opts.Name),
+						Name: buildDataVolumeName(opts.Name, VirtioDataVolumeSuffix),
 					},
-					Spec: cdiv1.DataVolumeSpec{
+					Spec: cdiv1beta1.DataVolumeSpec{
 						PVC: &corev1.PersistentVolumeClaimSpec{
 							Resources: corev1.VolumeResourceRequirements{
 								Requests: corev1.ResourceList{
@@ -194,8 +253,8 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 								},
 							},
 						},
-						Source: &cdiv1.DataVolumeSource{
-							HTTP: &cdiv1.DataVolumeSourceHTTP{
+						Source: &cdiv1beta1.DataVolumeSource{
+							HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
 								URL: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso",
 							},
 						},
@@ -224,7 +283,7 @@ Tradeoffs:
 */
 func generateDisks(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Disk {
 	disks := []kubevirtv1.Disk{{
-		Name: "primary",
+		Name: string(PrimaryVolumeDiskMapping),
 		DiskDevice: kubevirtv1.DiskDevice{
 			Disk: &kubevirtv1.DiskTarget{
 				Bus: kubevirtv1.DiskBusVirtio,
@@ -234,12 +293,9 @@ func generateDisks(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Dis
 
 	switch family {
 	case Linux:
-		if opts.StartupScriptSecretName == "" {
-			return disks
-		}
 		disks = append(disks,
 			kubevirtv1.Disk{
-				Name: "cloud-init",
+				Name: string(CloudInitVolumeDiskMapping),
 				DiskDevice: kubevirtv1.DiskDevice{
 					Disk: &kubevirtv1.DiskTarget{
 						Bus: kubevirtv1.DiskBusVirtio,
@@ -251,7 +307,7 @@ func generateDisks(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Dis
 		disks = append(disks,
 			// Disk D:
 			kubevirtv1.Disk{
-				Name:      "iso-install",
+				Name:      string(IsoInstallVolumeDiskMapping),
 				BootOrder: &bootOrder,
 				DiskDevice: kubevirtv1.DiskDevice{
 					CDRom: &kubevirtv1.CDRomTarget{
@@ -261,7 +317,16 @@ func generateDisks(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Dis
 			},
 			// Disk E: (virtio drivers) - HAS TO match `autounattend.xml` disk letter for virtio
 			kubevirtv1.Disk{
-				Name: "virtio-drivers",
+				Name: string(VirtioDriversVolumeDiskMapping),
+				DiskDevice: kubevirtv1.DiskDevice{
+					CDRom: &kubevirtv1.CDRomTarget{
+						Bus: kubevirtv1.DiskBusSATA,
+					},
+				},
+			},
+			// Disk F: (sysprep)
+			kubevirtv1.Disk{
+				Name: string(SysprepInitVolumeDiskMapping),
 				DiskDevice: kubevirtv1.DiskDevice{
 					CDRom: &kubevirtv1.CDRomTarget{
 						Bus: kubevirtv1.DiskBusSATA,
@@ -269,19 +334,6 @@ func generateDisks(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Dis
 				},
 			},
 		)
-
-		if opts.StartupScriptSecretName != "" {
-			disks = append(disks,
-				// Disk F: (sysprep)
-				kubevirtv1.Disk{
-					Name: "sysprep-init",
-					DiskDevice: kubevirtv1.DiskDevice{
-						CDRom: &kubevirtv1.CDRomTarget{
-							Bus: kubevirtv1.DiskBusSATA,
-						},
-					},
-				})
-		}
 	}
 
 	return disks
@@ -291,36 +343,33 @@ func generateVolumes(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.V
 	primaryVolumeSource := kubevirtv1.VolumeSource{}
 	switch family {
 	case Linux:
+		// Disk mounted with Linux cloud image
 		primaryVolumeSource.DataVolume = &kubevirtv1.DataVolumeSource{
-			// Disk mounted with Linux cloud image
-			Name: fmt.Sprintf("%s-source", opts.Name),
+			Name: buildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
 		}
 	case Windows:
+		// Disk empty and used as target by Windows install
 		primaryVolumeSource.EmptyDisk = &kubevirtv1.EmptyDiskSource{
-			// Disk empty and used as target by Windows install
 			Capacity: resource.MustParse(opts.DiskSpace),
 		}
 	}
 
 	volumes := []kubevirtv1.Volume{
 		{
-			Name:         "primary",
+			Name:         string(PrimaryVolumeDiskMapping),
 			VolumeSource: primaryVolumeSource,
 		},
 	}
 
 	switch family {
 	case Linux:
-		if opts.StartupScriptSecretName == "" {
-			return volumes
-		}
 		volumes = append(volumes,
 			kubevirtv1.Volume{
-				Name: "cloud-init",
+				Name: string(CloudInitVolumeDiskMapping),
 				VolumeSource: kubevirtv1.VolumeSource{
 					CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
 						UserDataSecretRef: &corev1.LocalObjectReference{
-							Name: opts.StartupScriptSecretName,
+							Name: buildSecretName(opts.Name, StartupScriptSecretSuffix),
 						},
 					},
 				},
@@ -329,35 +378,32 @@ func generateVolumes(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.V
 	case Windows:
 		volumes = append(volumes,
 			kubevirtv1.Volume{
-				Name: "iso-install",
+				Name: string(IsoInstallVolumeDiskMapping),
 				VolumeSource: kubevirtv1.VolumeSource{
 					DataVolume: &kubevirtv1.DataVolumeSource{
-						Name: fmt.Sprintf("%s-source", opts.Name),
+						Name: buildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
 					},
 				},
 			},
 			kubevirtv1.Volume{
-				Name: "virtio-drivers",
+				Name: string(VirtioDriversVolumeDiskMapping),
 				VolumeSource: kubevirtv1.VolumeSource{
 					DataVolume: &kubevirtv1.DataVolumeSource{
-						Name: fmt.Sprintf("%s-virtio-drivers", opts.Name),
+						Name: buildDataVolumeName(opts.Name, VirtioDataVolumeSuffix),
 					},
 				},
-			})
-
-		if opts.StartupScriptSecretName != "" {
-			volumes = append(volumes,
-				kubevirtv1.Volume{
-					Name: "sysprep-init",
-					VolumeSource: kubevirtv1.VolumeSource{
-						Sysprep: &kubevirtv1.SysprepSource{
-							Secret: &corev1.LocalObjectReference{
-								Name: opts.StartupScriptSecretName,
-							},
+			},
+			kubevirtv1.Volume{
+				Name: string(SysprepInitVolumeDiskMapping),
+				VolumeSource: kubevirtv1.VolumeSource{
+					Sysprep: &kubevirtv1.SysprepSource{
+						Secret: &corev1.LocalObjectReference{
+							Name: buildSecretName(opts.Name, StartupScriptSecretSuffix),
 						},
 					},
-				})
-		}
+				},
+			},
+		)
 	}
 
 	return volumes

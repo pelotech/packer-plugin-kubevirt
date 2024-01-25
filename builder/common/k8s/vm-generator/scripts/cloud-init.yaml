@@ -1,5 +1,13 @@
 #cloud-config
 
+system_info:
+  default_user:
+    name: packer
+    groups: sudo
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    shell: /bin/bash
+
+password: packer
 ssh_pwauth: True
 chpasswd: { expire: False }
 

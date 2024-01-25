@@ -106,7 +106,7 @@
                     <WillShowUI>OnError</WillShowUI>
                 </ProductKey>
                 <AcceptEula>true</AcceptEula>
-                <FullName>learner</FullName>
+                <FullName>packer</FullName>
                 <Organization>Bento by Chef Software, Inc.</Organization>
             </UserData>
             <DynamicUpdate>
@@ -150,28 +150,28 @@
             <TimeZone>UTC</TimeZone>
             <UserAccounts>
                 <AdministratorPassword>
-                    <Value>learner</Value>
+                    <Value>packer</Value>
                     <PlainText>true</PlainText>
                 </AdministratorPassword>
                 <LocalAccounts>
                     <LocalAccount wcm:action="add">
                         <Password>
-                            <Value>learner</Value>
+                            <Value>packer</Value>
                             <PlainText>true</PlainText>
                         </Password>
-                        <Description>learner User</Description>
-                        <DisplayName>learner</DisplayName>
+                        <Description>packer User</Description>
+                        <DisplayName>packer</DisplayName>
                         <Group>administrators</Group>
-                        <Name>learner</Name>
+                        <Name>packer</Name>
                     </LocalAccount>
                 </LocalAccounts>
             </UserAccounts>
             <AutoLogon>
                 <Password>
-                    <Value>learner</Value>
+                    <Value>packer</Value>
                     <PlainText>true</PlainText>
                 </Password>
-                <Username>learner</Username>
+                <Username>packer</Username>
                 <Enabled>true</Enabled>
             </AutoLogon>
             <FirstLogonCommands>
@@ -257,8 +257,8 @@
                 </SynchronousCommand>
                 <SynchronousCommand wcm:action="add">
                     <Order>17</Order>
-                    <CommandLine>%windir%\System32\cmd.exe /c wmic useraccount where "name='learner'" set PasswordExpires=FALSE</CommandLine>
-                    <Description>Disable password expiration for learner user</Description>
+                    <CommandLine>%windir%\System32\cmd.exe /c wmic useraccount where "name='packer'" set PasswordExpires=FALSE</CommandLine>
+                    <Description>Disable password expiration for packer user</Description>
                 </SynchronousCommand>
             </FirstLogonCommands>
         </component>

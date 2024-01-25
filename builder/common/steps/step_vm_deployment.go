@@ -25,28 +25,62 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	ns := state.Get("namespace").(string)
 	name := state.Get("name").(string)
 
+	ui.Say(fmt.Sprintf("creating Virtual Machine %s/%s...", ns, name))
 	vm := vmgenerator.GenerateVirtualMachine(s.VmOptions)
 	vm, err := s.VirtClient.VirtualMachine(ns).Create(context.TODO(), vm)
 	if err != nil {
-		ui.Error(fmt.Sprintf("Failed to provision Virtual Machine %s/%s: %s", ns, name, err))
+		err := fmt.Errorf("failed to create Virtual Machine %s/%s: %s", ns, name, err)
+		state.Put("error", err)
+		ui.Error(err.Error())
+
 		return multistep.ActionHalt
 	}
 
-	if s.VmOptions.Credentials != nil {
-		vmgenerator.GenerateCredentials(vm, s.VmOptions)
-	}
-
-	if s.VmOptions.StartupScriptSecretName != "" {
-		startupScriptSecret := vmgenerator.GenerateStartupScriptSecret(vm, s.VmOptions)
-		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
+	if s.VmOptions.S3ImageSource.AwsAccessKeyId != "" && s.VmOptions.S3ImageSource.AwsSecretAccessKey != "" {
+		s3CredentialsSecret := vmgenerator.GenerateS3CredentialsSecret(vm, s.VmOptions)
+		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), s3CredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
-			ui.Error(fmt.Sprintf("Failed to provision Virtual Machine startup script secret %s/%s: %s", ns, name, err))
+			err := fmt.Errorf("failed to create s3 credentials secret for Virtual Machine %s/%s: %s", ns, name, err)
+			state.Put("error", err)
+			ui.Error(err.Error())
+
 			return multistep.ActionHalt
 		}
 	}
 
-	_ = s.waitForVirtualMachine(ns, name)
-	ui.Say(fmt.Sprintf("VM has been started, initialized and is ready to be provisioned: %s/%s", ns, name))
+	startupScriptSecret := vmgenerator.GenerateStartupScriptSecret(vm, s.VmOptions)
+	_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
+	if err != nil {
+		err := fmt.Errorf("failed to create startup script secret for Virtual Machine %s/%s: %s", ns, name, err)
+		state.Put("error", err)
+		ui.Error(err.Error())
+
+		return multistep.ActionHalt
+	}
+
+	if s.VmOptions.Credentials != nil {
+		userCredentialsSecret := vmgenerator.GenerateUserCredentialsSecret(vm, s.VmOptions)
+		s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), userCredentialsSecret, metav1.CreateOptions{})
+		if err != nil {
+			err := fmt.Errorf("failed to create user credentials secret for Virtual Machine %s/%s: %s", ns, name, err)
+			state.Put("error", err)
+			ui.Error(err.Error())
+
+			return multistep.ActionHalt
+		}
+	}
+
+	err = s.waitForVirtualMachine(ns, name)
+	if err != nil {
+		err := fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine: %s/%s: %s", ns, name, err)
+		state.Put("error", err)
+		ui.Error(err.Error())
+
+		return multistep.ActionHalt
+	}
+
+	ui.Say(fmt.Sprintf("deployment step has completed for Virtual Machine: %s/%s", ns, name))
+	state.Put("vm", vm)
 
 	return multistep.ActionContinue
 }
