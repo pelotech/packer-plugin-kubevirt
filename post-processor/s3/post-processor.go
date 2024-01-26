@@ -15,6 +15,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
+	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/vm-generator"
 	"packer-plugin-kubevirt/post-processor/common"
 )
 
@@ -57,13 +58,34 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 }
 
 func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
-	export := source.State(string(buildercommon.VirtualMachineExport)).(v1alpha1.VirtualMachineExport)
+	export := source.State(string(buildercommon.VirtualMachineExport)).(*v1alpha1.VirtualMachineExport)
 	exportToken := source.State(string(buildercommon.VirtualMachineExportToken)).(string)
+
+	defer func() {
+		err := p.cleanupResources(export.Namespace, export.Name)
+		if err != nil {
+			ui.Error(fmt.Sprintf("Failed to clean up VM export: %v", err))
+		}
+	}()
+
+	var exportServerUrl string
+	for _, vol := range export.Status.Links.Internal.Volumes {
+		if vol.Name == string(vmgenerator.PrimaryVolumeDiskMapping) {
+			for _, volumeFormat := range vol.Formats {
+				if volumeFormat.Format == v1alpha1.KubeVirtGz || volumeFormat.Format == v1alpha1.ArchiveGz {
+					exportServerUrl = volumeFormat.Url
+				}
+			}
+		}
+	}
+	if exportServerUrl == "" {
+		return nil, true, true, fmt.Errorf("failed to find export server url")
+	}
 
 	options := common.S3UploaderOptions{
 		Name:               export.Name,
 		Namespace:          export.Namespace,
-		ExportServerUrl:    export.Status.Links.Internal.Volumes[0].Formats[0].Url,
+		ExportServerUrl:    exportServerUrl,
 		ExportServerToken:  exportToken,
 		S3BucketName:       p.config.S3Bucket,
 		S3Key:              p.config.S3Key,
@@ -71,19 +93,22 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		AWSSecretAccessKey: p.config.AWSSecretAccessKey,
 		AWSRegion:          p.config.AWSRegion,
 	}
-	secret := common.GenerateS3UploaderSecret(options)
-	_, err := p.virtClient.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
+
+	job := common.GenerateS3UploaderJob(export, options)
+	job, err := p.virtClient.BatchV1().Jobs(export.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	if err != nil {
+		return nil, true, true, fmt.Errorf("failed to deploy S3 uploader job: %w", err)
+	}
+
+	secret := common.GenerateS3UploaderSecret(job, options)
+	_, err = p.virtClient.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
 	if err != nil {
 		return nil, true, true, fmt.Errorf("failed to create S3 uploader secret: %w", err)
 	}
 
-	job := common.GenerateS3UploaderJob(options)
-	job, err = p.virtClient.BatchV1().Jobs(export.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-	if err != nil {
-		return nil, true, true, fmt.Errorf("failed to upload to S3: %w", err)
-	}
-
-	// TODO: Resources have to be cleaned up if successful!
-
 	return source, true, true, nil
+}
+
+func (p *PostProcessor) cleanupResources(ns, name string) error {
+	return p.virtClient.VirtualMachineExport(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }

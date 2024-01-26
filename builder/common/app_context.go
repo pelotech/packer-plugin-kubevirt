@@ -32,16 +32,16 @@ func (s *AppContext) GetPackerUi() packersdk.Ui {
 	return s.get(PackerUi).(packersdk.Ui)
 }
 
-func (s *AppContext) GetVirtualMachine() kubevirtv1.VirtualMachine {
-	return s.get(VirtualMachine).(kubevirtv1.VirtualMachine)
+func (s *AppContext) GetVirtualMachine() *kubevirtv1.VirtualMachine {
+	return s.get(VirtualMachine).(*kubevirtv1.VirtualMachine)
 }
 
-func (s *AppContext) GetVirtualMachineExport() exportv1.VirtualMachineExport {
-	return s.get(VirtualMachineExport).(exportv1.VirtualMachineExport)
+func (s *AppContext) GetVirtualMachineExport() *exportv1.VirtualMachineExport {
+	return s.get(VirtualMachineExport).(*exportv1.VirtualMachineExport)
 }
 
-func (s *AppContext) GetVirtualMachineExportToken() exportv1.VirtualMachineExport {
-	return s.get(VirtualMachineExportToken).(exportv1.VirtualMachineExport)
+func (s *AppContext) GetVirtualMachineExportToken() string {
+	return s.get(VirtualMachineExportToken).(string)
 }
 
 func (s *AppContext) BuildArtifact() packersdk.Artifact {

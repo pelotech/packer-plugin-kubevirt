@@ -54,12 +54,12 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 		return multistep.ActionHalt
 	}
 
-	appContext.Put(common.VirtualMachineExport, &export)
+	appContext.Put(common.VirtualMachineExport, export)
 
 	return multistep.ActionContinue
 }
 
-func (s *StepExportVM) createExport(vm kubevirtv1.VirtualMachine, token string) (*exportv1.VirtualMachineExport, error) {
+func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine, token string) (*exportv1.VirtualMachineExport, error) {
 	exportSource := corev1.TypedLocalObjectReference{
 		APIGroup: &kubevirtv1.VirtualMachineGroupVersionKind.Group,
 		Kind:     kubevirtv1.VirtualMachineGroupVersionKind.Kind,
@@ -70,9 +70,6 @@ func (s *StepExportVM) createExport(vm kubevirtv1.VirtualMachine, token string) 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      vm.Name,
 			Namespace: vm.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(&vm, k8s.VirtualMachineGroupVersionKind),
-			},
 		},
 		Spec: exportv1.VirtualMachineExportSpec{
 			TokenSecretRef: &exportTokenSecret,
@@ -125,7 +122,7 @@ func getOrCreateTokenSecret(client kubecli.KubevirtClient, vmexport *exportv1.Vi
 			Name:      *vmexport.Spec.TokenSecretRef,
 			Namespace: vmexport.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(vmexport, k8s.VirtualMachineExportGroupVersionResource),
+				*metav1.NewControllerRef(vmexport, exportv1.SchemeGroupVersion.WithKind(vmexport.Kind)),
 			},
 		},
 		Type: corev1.SecretTypeOpaque,

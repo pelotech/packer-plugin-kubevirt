@@ -68,7 +68,7 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 
 	// 0. Align logger log level on user bool input 'b.config.PackerDebug'	INFO/DEBUG
 	// 1. Validate configuration fields
-	// 2. Validate credentials (e.g. kubectl client)
+	// 2. Validate credentials (e.g. k8s client)
 	// 3. Any computed values (if needed)
 
 	b.virtClient, err = k8s.GetKubevirtClient()

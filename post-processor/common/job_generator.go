@@ -5,6 +5,8 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"kubevirt.io/api/export/v1alpha1"
+	exportv1 "kubevirt.io/api/export/v1alpha1"
 	"packer-plugin-kubevirt/builder/common/steps"
 	"path"
 )
@@ -29,11 +31,14 @@ type S3UploaderOptions struct {
 	AWSRegion          string
 }
 
-func GenerateS3UploaderSecret(opts S3UploaderOptions) *corev1.Secret {
+func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      opts.Name,
 			Namespace: opts.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind(job.Kind)),
+			},
 		},
 		StringData: map[string]string{
 			"AWS_ACCESS_KEY_ID":     opts.AWSAccessKeyId,
@@ -43,13 +48,16 @@ func GenerateS3UploaderSecret(opts S3UploaderOptions) *corev1.Secret {
 	}
 }
 
-func GenerateS3UploaderJob(opts S3UploaderOptions) *batchv1.Job {
+func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
 	filename := fmt.Sprintf("%s.img.gz", opts.Name)
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("s3-uploader-%s", opts.Name),
 			Namespace: opts.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(export.Kind)),
+			},
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{

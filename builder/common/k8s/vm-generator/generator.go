@@ -1,4 +1,4 @@
-package vm_generator
+package vmgenerator
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
-	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"strings"
 )
@@ -119,7 +118,7 @@ func GenerateStartupScriptSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 			Name:      buildSecretName(opts.Name, StartupScriptSecretSuffix),
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(vm, k8s.VirtualMachineGroupVersionKind),
+				*metav1.NewControllerRef(vm, kubevirtv1.VirtualMachineGroupVersionKind),
 			},
 		},
 		StringData: data,
@@ -133,7 +132,7 @@ func GenerateS3CredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 			Name:      buildSecretName(opts.Name, S3CredentialsSuffix),
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(vm, k8s.VirtualMachineGroupVersionKind),
+				*metav1.NewControllerRef(vm, kubevirtv1.VirtualMachineGroupVersionKind),
 			},
 		},
 		StringData: map[string]string{
@@ -158,7 +157,7 @@ func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMa
 			Name:      buildSecretName(opts.Name, UserCredentialsSuffix),
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(vm, k8s.VirtualMachineGroupVersionKind),
+				*metav1.NewControllerRef(vm, kubevirtv1.VirtualMachineGroupVersionKind),
 			},
 		},
 		StringData: data,

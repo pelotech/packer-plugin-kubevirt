@@ -48,7 +48,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		return multistep.ActionHalt
 	}
 
-	if s.VmOptions.S3ImageSource.AwsAccessKeyId != "" && s.VmOptions.S3ImageSource.AwsSecretAccessKey != "" {
+	if s.VmOptions.S3ImageSource.AWSAccessKeyId != "" && s.VmOptions.S3ImageSource.AWSSecretAccessKey != "" {
 		s3CredentialsSecret := vmgenerator.GenerateS3CredentialsSecret(vm, s.VmOptions)
 		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), s3CredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
