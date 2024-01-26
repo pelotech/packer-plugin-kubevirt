@@ -3,7 +3,12 @@
 
 package iso
 
-// packersdk.Artifact implementation
+const (
+	InternalUrlArtifact  = "internal_url"
+	InternalCertArtifact = "internal_cert"
+)
+
+// Artifact packersdk.Artifact implementation
 type Artifact struct {
 	// StateData should store data such as GeneratedData
 	// to be common with post-processors

@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	gossh "golang.org/x/crypto/ssh"
+	"kubevirt.io/client-go/kubecli"
+	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/vm-generator"
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
@@ -20,8 +22,11 @@ import (
 
 const (
 	BuilderId              = "kubevirt.iso"
+	VirtualMachineHost     = "127.0.0.1"
 	VirtualMachineUsername = "packer"
 	VirtualMachinePassword = "packer"
+	DefaultSSHPort         = 22
+	DefaultWinRMPort       = 5985
 )
 
 type Config struct {
@@ -37,14 +42,15 @@ type Config struct {
 	SSHPort   int `mapstructure:"ssh_port"`
 	WinRMPort int `mapstructure:"winrm_port"`
 
-	SourceS3Url             string `mapstructure:"source_s3_url"`
-	SourceS3AccessKeyId     string `mapstructure:"source_s3_access_key_id"`
-	SourceS3SecretAccessKey string `mapstructure:"source_s3_secret_access_key"`
+	SourceS3Url              string `mapstructure:"source_s3_url"`
+	SourceAWSAccessKeyId     string `mapstructure:"source_aws_access_key_id"`
+	SourceAWSSecretAccessKey string `mapstructure:"source_aws_secret_access_key"`
 }
 
 type Builder struct {
-	config Config
-	runner multistep.Runner
+	config     Config
+	runner     multistep.Runner
+	virtClient kubecli.KubevirtClient
 }
 
 func (b *Builder) ConfigSpec() hcldec.ObjectSpec {
@@ -65,33 +71,37 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	// 2. Validate credentials (e.g. kubectl client)
 	// 3. Any computed values (if needed)
 
+	b.virtClient, err = k8s.GetKubevirtClient()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return []string{}, nil, nil
 }
 
 func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
-	virtClient, _ := k8s.GetKubevirtClient()
 
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
-			VirtClient: virtClient,
+			VirtClient: b.virtClient,
 			VmOptions: vmgenerator.VirtualMachineOptions{
 				Name:         b.config.KubernetesName,
 				Namespace:    b.config.KubernetesNamespace,
 				OsPreference: b.config.KubevirtOsPreference,
 				S3ImageSource: vmgenerator.S3ImageSource{
-					Url:                b.config.SourceS3Url,
-					AwsAccessKeyId:     b.config.SourceS3AccessKeyId,
-					AwsSecretAccessKey: b.config.SourceS3SecretAccessKey,
+					URL:                b.config.SourceS3Url,
+					AWSAccessKeyId:     b.config.SourceAWSAccessKeyId,
+					AWSSecretAccessKey: b.config.SourceAWSSecretAccessKey,
 				},
 				DiskSpace: b.config.VirtualMachineDiskSpace,
 			},
 		},
 		&stepDef.StepPortForwardVM{
-			VirtClient: virtClient,
+			VirtClient: b.virtClient,
 		},
 		&communicator.StepConnect{
 			Host: func(bag multistep.StateBag) (string, error) {
-				return "127.0.0.1", nil
+				return VirtualMachineHost, nil
 			},
 			SSHConfig: func(bag multistep.StateBag) (*gossh.ClientConfig, error) {
 				return &gossh.ClientConfig{
@@ -103,7 +113,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 				}, nil
 			},
 			SSHPort: func(bag multistep.StateBag) (int, error) {
-				return utils.GetOrDefault(b.config.WinRMPort, 22), nil
+				return utils.GetOrDefault(b.config.SSHPort, DefaultSSHPort), nil
 			},
 			WinRMConfig: func(bag multistep.StateBag) (*communicator.WinRMConfig, error) {
 				return &communicator.WinRMConfig{
@@ -112,45 +122,29 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 				}, nil
 			},
 			WinRMPort: func(bag multistep.StateBag) (int, error) {
-				return utils.GetOrDefault(b.config.WinRMPort, 5985), nil
+				return utils.GetOrDefault(b.config.WinRMPort, DefaultWinRMPort), nil
 			},
 		},
-		// This step pulls the communicator config from 'communicator' key in state bag (populated by StepConnect)
 		&commonsteps.StepProvision{},
 		&stepDef.StepExportVM{
-			VirtClient: virtClient,
-		},
-		&stepDef.StepPortForwardVM{
-			VirtClient: virtClient,
-		},
-		&stepDef.StepDownloadVM{
-			VirtClient: virtClient,
+			VirtClient: b.virtClient,
 		},
 	}
 
 	state := new(multistep.BasicStateBag)
-	state.Put("hook", hook)
-	state.Put("ui", ui)
-
-	state.Put("namespace", b.config.KubernetesNamespace)
-	state.Put("name", b.config.KubernetesName)
+	appContext := &buildercommon.AppContext{State: state}
+	appContext.Put(buildercommon.PackerHook, hook)
+	appContext.Put(buildercommon.PackerUi, ui)
 
 	// Run!
 	b.runner = commonsteps.NewRunner(steps, b.config.PackerConfig, ui)
 	b.runner.Run(ctx, state)
 
 	// If there was an error, return that
-	if err, ok := state.GetOk("error"); ok {
-		return nil, err.(error)
+	err := appContext.GetPackerError()
+	if err != nil {
+		return nil, err
 	}
 
-	artifact := &Artifact{
-		// Add the builder generated data to the artifact StateData so that post-processors
-		// can access them.
-		StateData: map[string]interface{}{
-			"vm_export_filepath": state.Get(),
-		},
-	}
-
-	return artifact, nil
+	return appContext.BuildArtifact(), nil
 }

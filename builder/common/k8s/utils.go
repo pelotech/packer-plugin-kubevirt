@@ -33,6 +33,7 @@ func RunPortForward(client kubecli.KubevirtClient, podName, namespace string, po
 	if err != nil {
 		return err
 	}
+
 	return forwarder.ForwardPorts()
 }
 

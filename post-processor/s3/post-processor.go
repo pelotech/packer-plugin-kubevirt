@@ -5,27 +5,32 @@ package s3
 import (
 	"context"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/hashicorp/hcl/v2/hcldec"
-	"github.com/hashicorp/packer-plugin-sdk/common"
+	packercommon "github.com/hashicorp/packer-plugin-sdk/common"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
-	"os"
-	awsutils "packer-plugin-kubevirt/post-processor/s3/aws"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"kubevirt.io/api/export/v1alpha1"
+	"kubevirt.io/client-go/kubecli"
+	buildercommon "packer-plugin-kubevirt/builder/common"
+	"packer-plugin-kubevirt/builder/common/k8s"
+	"packer-plugin-kubevirt/post-processor/common"
 )
 
 type Config struct {
-	common.PackerConfig `mapstructure:",squash"`
-	ctx                 interpolate.Context
-	MockOption          string `mapstructure:"mock"`
-	bucket              string `mapstructure:"bucket"`
-	key                 string `mapstructure:"key"`
+	packercommon.PackerConfig `mapstructure:",squash"`
+	ctx                       interpolate.Context
+	S3Bucket                  string `mapstructure:"s3_bucket"`
+	S3Key                     string `mapstructure:"s3_key"`
+	AWSAccessKeyId            string `mapstructure:"aws_access_key_id"`
+	AWSSecretAccessKey        string `mapstructure:"aws_secret_access_key"`
+	AWSRegion                 string `mapstructure:"aws_region"`
 }
 
 type PostProcessor struct {
-	config Config
+	config     Config
+	virtClient kubecli.KubevirtClient
 }
 
 func (p *PostProcessor) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
@@ -43,38 +48,42 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 		return err
 	}
 
-	return nil
-}
-
-func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
-	ui.Say(fmt.Sprintf("post-processor mock: %s", p.config.MockOption))
-
-	// TODO: Filepath needs to be added to Artifact object + S3 bucket/key passed
-	file, err := os.Open("")
-	defer file.Close()
-	if err != nil {
-		return nil, true, true, fmt.Errorf("failed to open VM image file: %w", err)
-	}
-
-	err = uploadImage(file, "", "")
-	if err != nil {
-		return nil, true, true, fmt.Errorf("failed to upload VM image: %w", err)
-	}
-
-	return source, true, true, nil
-}
-
-func uploadImage(file *os.File, bucket, key string) error {
-	uploader, err := awsutils.GetS3Uploader()
-
-	_, err = uploader.Upload(&s3manager.UploadInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-		Body:   file,
-	})
+	p.virtClient, err = k8s.GetInClusterKubevirtClient()
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
+	export := source.State(string(buildercommon.VirtualMachineExport)).(v1alpha1.VirtualMachineExport)
+	exportToken := source.State(string(buildercommon.VirtualMachineExportToken)).(string)
+
+	options := common.S3UploaderOptions{
+		Name:               export.Name,
+		Namespace:          export.Namespace,
+		ExportServerUrl:    export.Status.Links.Internal.Volumes[0].Formats[0].Url,
+		ExportServerToken:  exportToken,
+		S3BucketName:       p.config.S3Bucket,
+		S3Key:              p.config.S3Key,
+		AWSAccessKeyId:     p.config.AWSAccessKeyId,
+		AWSSecretAccessKey: p.config.AWSSecretAccessKey,
+		AWSRegion:          p.config.AWSRegion,
+	}
+	secret := common.GenerateS3UploaderSecret(options)
+	_, err := p.virtClient.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
+	if err != nil {
+		return nil, true, true, fmt.Errorf("failed to create S3 uploader secret: %w", err)
+	}
+
+	job := common.GenerateS3UploaderJob(options)
+	job, err = p.virtClient.BatchV1().Jobs(export.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	if err != nil {
+		return nil, true, true, fmt.Errorf("failed to upload to S3: %w", err)
+	}
+
+	// TODO: Resources have to be cleaned up if successful!
+
+	return source, true, true, nil
 }

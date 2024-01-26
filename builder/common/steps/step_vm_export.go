@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
-	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,12 +12,14 @@ import (
 	exportv1 "kubevirt.io/api/export/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 	"log"
+	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"time"
 )
 
 const (
+	ExportTokenHeader = "x-kubevirt-export-token"
 	secretTokenKey    = "token"
 	secretTokenLength = 20
 )
@@ -28,47 +29,49 @@ type StepExportVM struct {
 }
 
 func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
-	ui := state.Get("ui").(packersdk.Ui)
-	ns := state.Get("namespace").(string)
-	name := state.Get("name").(string)
+	appContext := &common.AppContext{State: state}
+	ui := appContext.GetPackerUi()
+	vm := appContext.GetVirtualMachine()
 
 	token := utils.GenerateRandomPassword(secretTokenLength)
+	appContext.Put(common.VirtualMachineExportToken, token)
 
-	export, err := s.createExport(ns, name, token)
+	export, err := s.createExport(vm, token)
 	if err != nil {
-		err := fmt.Errorf("failed to create Virtual Machine Export %s/%s: %s", ns, name, err)
-		state.Put("error", err)
+		err := fmt.Errorf("failed to create Virtual Machine Export %s/%s: %s", vm.Namespace, vm.Name, err)
+		appContext.Put(common.PackerError, err)
 		ui.Error(err.Error())
 
 		return multistep.ActionHalt
 	}
 
-	err = s.waitForExportReady(ns, name)
+	err = s.waitForExportReady(vm.Namespace, vm.Name)
 	if err != nil {
-		err := fmt.Errorf("failed to wait for Virtual Machine Export to be in a 'Ready' state %s/%s: %s", ns, name, err)
-		state.Put("error", err)
+		err := fmt.Errorf("failed to wait for Virtual Machine Export to be in a 'Ready' state %s/%s: %s", vm.Namespace, vm.Name, err)
+		appContext.Put(common.PackerError, err)
 		ui.Error(err.Error())
 
 		return multistep.ActionHalt
 	}
+
+	appContext.Put(common.VirtualMachineExport, &export)
 
 	return multistep.ActionContinue
 }
 
-func (s *StepExportVM) createExport(ns, name, token string) (*exportv1.VirtualMachineExport, error) {
+func (s *StepExportVM) createExport(vm kubevirtv1.VirtualMachine, token string) (*exportv1.VirtualMachineExport, error) {
 	exportSource := corev1.TypedLocalObjectReference{
 		APIGroup: &kubevirtv1.VirtualMachineGroupVersionKind.Group,
 		Kind:     kubevirtv1.VirtualMachineGroupVersionKind.Kind,
-		Name:     name,
+		Name:     vm.Name,
 	}
-	exportTokenSecret := fmt.Sprintf("export-token-%s", name)
+	exportTokenSecret := fmt.Sprintf("export-token-%s", vm.Name)
 	export := &exportv1.VirtualMachineExport{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-			// TODO: expose VM object from previous step or resolve by string if no clean alternative
+			Name:      vm.Name,
+			Namespace: vm.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(vm, k8s.VirtualMachineGroupVersionKind),
+				*metav1.NewControllerRef(&vm, k8s.VirtualMachineGroupVersionKind),
 			},
 		},
 		Spec: exportv1.VirtualMachineExportSpec{
@@ -76,7 +79,7 @@ func (s *StepExportVM) createExport(ns, name, token string) (*exportv1.VirtualMa
 			Source:         exportSource,
 		},
 	}
-	result, err := s.VirtClient.VirtualMachineExport(ns).Create(context.TODO(), export, metav1.CreateOptions{})
+	result, err := s.VirtClient.VirtualMachineExport(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}

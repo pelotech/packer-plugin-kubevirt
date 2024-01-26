@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
-	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
+	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/vm-generator"
 	"time"
@@ -21,16 +22,27 @@ type StepDeployVM struct {
 }
 
 func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
-	ui := state.Get("ui").(packersdk.Ui)
-	ns := state.Get("namespace").(string)
-	name := state.Get("name").(string)
+	appContext := &common.AppContext{State: state}
+	ui := appContext.GetPackerUi()
+	ns := s.VmOptions.Namespace
+	name := s.VmOptions.Name
+
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
+	_, err := s.VirtClient.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
+	if err != nil && !errors.IsAlreadyExists(err) {
+		err := fmt.Errorf("failed to create Virtual Machine namespace %s/%s: %s", ns, name, err)
+		appContext.Put(common.PackerError, err)
+		ui.Error(err.Error())
+
+		return multistep.ActionHalt
+	}
 
 	ui.Say(fmt.Sprintf("creating Virtual Machine %s/%s...", ns, name))
 	vm := vmgenerator.GenerateVirtualMachine(s.VmOptions)
-	vm, err := s.VirtClient.VirtualMachine(ns).Create(context.TODO(), vm)
+	vm, err = s.VirtClient.VirtualMachine(ns).Create(context.TODO(), vm)
 	if err != nil {
 		err := fmt.Errorf("failed to create Virtual Machine %s/%s: %s", ns, name, err)
-		state.Put("error", err)
+		appContext.Put(common.PackerError, err)
 		ui.Error(err.Error())
 
 		return multistep.ActionHalt
@@ -41,7 +53,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), s3CredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
 			err := fmt.Errorf("failed to create s3 credentials secret for Virtual Machine %s/%s: %s", ns, name, err)
-			state.Put("error", err)
+			appContext.Put(common.PackerError, err)
 			ui.Error(err.Error())
 
 			return multistep.ActionHalt
@@ -52,7 +64,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
 	if err != nil {
 		err := fmt.Errorf("failed to create startup script secret for Virtual Machine %s/%s: %s", ns, name, err)
-		state.Put("error", err)
+		appContext.Put(common.PackerError, err)
 		ui.Error(err.Error())
 
 		return multistep.ActionHalt
@@ -60,10 +72,10 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 	if s.VmOptions.Credentials != nil {
 		userCredentialsSecret := vmgenerator.GenerateUserCredentialsSecret(vm, s.VmOptions)
-		s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), userCredentialsSecret, metav1.CreateOptions{})
+		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), userCredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
 			err := fmt.Errorf("failed to create user credentials secret for Virtual Machine %s/%s: %s", ns, name, err)
-			state.Put("error", err)
+			appContext.Put(common.PackerError, err)
 			ui.Error(err.Error())
 
 			return multistep.ActionHalt
@@ -72,15 +84,16 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 	err = s.waitForVirtualMachine(ns, name)
 	if err != nil {
-		err := fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine: %s/%s: %s", ns, name, err)
-		state.Put("error", err)
+		err = fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine: %s/%s: %s", ns, name, err)
+		appContext.Put(common.PackerError, err)
 		ui.Error(err.Error())
 
 		return multistep.ActionHalt
 	}
 
 	ui.Say(fmt.Sprintf("deployment step has completed for Virtual Machine: %s/%s", ns, name))
-	state.Put("vm", vm)
+
+	appContext.Put(common.VirtualMachine, vm)
 
 	return multistep.ActionContinue
 }
@@ -103,8 +116,9 @@ func (s *StepDeployVM) waitForVirtualMachine(ns, name string) error {
 }
 
 func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
-	namespace := state.Get("namespace").(string)
-	name := state.Get("name").(string)
+	appContext := &common.AppContext{State: state}
+	name := appContext.GetVirtualMachine().Name
+	namespace := appContext.GetVirtualMachine().Namespace
 	deletionPropagation := metav1.DeletePropagationForeground
 
 	_ = s.VirtClient.VirtualMachine(namespace).Delete(context.TODO(), name, &metav1.DeleteOptions{PropagationPolicy: &deletionPropagation})

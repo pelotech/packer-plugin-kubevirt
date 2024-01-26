@@ -27,9 +27,9 @@ type AccessCredentials struct {
 }
 
 type S3ImageSource struct {
-	Url                string
-	AwsAccessKeyId     string
-	AwsSecretAccessKey string
+	URL                string
+	AWSAccessKeyId     string
+	AWSSecretAccessKey string
 }
 
 type OsFamily int32
@@ -137,8 +137,8 @@ func GenerateS3CredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 			},
 		},
 		StringData: map[string]string{
-			"accessKeyId": opts.S3ImageSource.AwsAccessKeyId,
-			"secretKey":   opts.S3ImageSource.AwsSecretAccessKey,
+			"accessKeyId": opts.S3ImageSource.AWSAccessKeyId,
+			"secretKey":   opts.S3ImageSource.AWSSecretAccessKey,
 		},
 		Type: corev1.SecretTypeOpaque,
 	}
@@ -179,11 +179,11 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 	}
 
 	var secretName string
-	if opts.S3ImageSource.AwsAccessKeyId != "" && opts.S3ImageSource.AwsSecretAccessKey != "" {
+	if opts.S3ImageSource.AWSAccessKeyId != "" && opts.S3ImageSource.AWSSecretAccessKey != "" {
 		secretName = buildSecretName(opts.Name, S3CredentialsSuffix)
 	}
 	dataVolumeSourceS3 := &cdiv1beta1.DataVolumeSourceS3{
-		URL:       opts.S3ImageSource.Url,
+		URL:       opts.S3ImageSource.URL,
 		SecretRef: secretName,
 	}
 
