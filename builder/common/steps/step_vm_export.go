@@ -14,13 +14,13 @@ import (
 	"log"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
+	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"time"
 )
 
 const (
 	ExportTokenHeader = "x-kubevirt-export-token"
-	secretTokenKey    = "token"
 	secretTokenLength = 20
 )
 
@@ -60,28 +60,13 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 }
 
 func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine, token string) (*exportv1.VirtualMachineExport, error) {
-	exportSource := corev1.TypedLocalObjectReference{
-		APIGroup: &kubevirtv1.VirtualMachineGroupVersionKind.Group,
-		Kind:     kubevirtv1.VirtualMachineGroupVersionKind.Kind,
-		Name:     vm.Name,
-	}
-	exportTokenSecret := fmt.Sprintf("export-token-%s", vm.Name)
-	export := &exportv1.VirtualMachineExport{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      vm.Name,
-			Namespace: vm.Namespace,
-		},
-		Spec: exportv1.VirtualMachineExportSpec{
-			TokenSecretRef: &exportTokenSecret,
-			Source:         exportSource,
-		},
-	}
+	export := vmgenerator.GenerateVirtualMachineExport(vm)
 	result, err := s.VirtClient.VirtualMachineExport(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
-	// Create secret after export to build 'OwnerReference' relationship 'VME to secret'
-	_, err = getOrCreateTokenSecret(s.VirtClient, export, token)
+
+	_, err = s.getOrCreateTokenSecret(export, token)
 	if err != nil {
 		return nil, err
 	}
@@ -116,22 +101,9 @@ func (s *StepExportVM) waitForExportReady(ns, name string) error {
 
 }
 
-func getOrCreateTokenSecret(client kubecli.KubevirtClient, vmexport *exportv1.VirtualMachineExport, token string) (*corev1.Secret, error) {
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      *vmexport.Spec.TokenSecretRef,
-			Namespace: vmexport.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(vmexport, exportv1.SchemeGroupVersion.WithKind(vmexport.Kind)),
-			},
-		},
-		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string{
-			secretTokenKey: token,
-		},
-	}
-
-	secret, err := client.CoreV1().Secrets(vmexport.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
+func (s *StepExportVM) getOrCreateTokenSecret(export *exportv1.VirtualMachineExport, token string) (*corev1.Secret, error) {
+	secret := vmgenerator.GenerateTokenSecret(export, token)
+	secret, err := s.VirtClient.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
 	if err != nil && !k8serrors.IsAlreadyExists(err) {
 		return nil, err
 	}

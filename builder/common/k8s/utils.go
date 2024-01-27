@@ -15,6 +15,11 @@ import (
 	"time"
 )
 
+const (
+	ImageBuilderTaintKey   = "pelo.tech/uki-labs"
+	ImageBuilderTaintValue = "builder"
+)
+
 func RunPortForward(client kubecli.KubevirtClient, podName, namespace string, ports []string) error {
 	url := client.CoreV1().RESTClient().Post().
 		Resource("pods").

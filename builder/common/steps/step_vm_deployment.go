@@ -12,7 +12,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/vm-generator"
+	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
 	"time"
 )
 

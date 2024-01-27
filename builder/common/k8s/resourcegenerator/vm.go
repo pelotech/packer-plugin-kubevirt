@@ -1,4 +1,4 @@
-package vmgenerator
+package resourcegenerator
 
 import (
 	"fmt"
@@ -229,7 +229,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 					},
 					Spec: cdiv1beta1.DataVolumeSpec{
 						PVC: &corev1.PersistentVolumeClaimSpec{
-							Resources: corev1.VolumeResourceRequirements{
+							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
 									corev1.ResourceStorage: resource.MustParse(opts.DiskSpace),
 								},
@@ -246,7 +246,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 					},
 					Spec: cdiv1beta1.DataVolumeSpec{
 						PVC: &corev1.PersistentVolumeClaimSpec{
-							Resources: corev1.VolumeResourceRequirements{
+							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
 									corev1.ResourceStorage: resource.MustParse("1Gi"),
 								},

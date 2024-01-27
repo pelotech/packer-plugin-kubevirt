@@ -5,7 +5,6 @@ import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1alpha1"
-	"packer-plugin-kubevirt/builder/iso"
 )
 
 type StateBagEntry string
@@ -45,7 +44,7 @@ func (s *AppContext) GetVirtualMachineExportToken() string {
 }
 
 func (s *AppContext) BuildArtifact() packersdk.Artifact {
-	return &iso.Artifact{
+	return &Artifact{
 		StateData: map[string]interface{}{
 			string(VirtualMachine):            s.GetVirtualMachine(),
 			string(VirtualMachineExport):      s.GetVirtualMachineExport(),

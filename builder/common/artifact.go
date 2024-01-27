@@ -1,7 +1,9 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package iso
+package common
+
+import "packer-plugin-kubevirt/builder/iso"
 
 const (
 	InternalUrlArtifact  = "internal_url"
@@ -16,7 +18,7 @@ type Artifact struct {
 }
 
 func (*Artifact) BuilderId() string {
-	return BuilderId
+	return iso.BuilderId
 }
 
 func (a *Artifact) Files() []string {
