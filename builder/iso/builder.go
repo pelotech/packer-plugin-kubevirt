@@ -18,6 +18,7 @@ import (
 	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/utils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -51,6 +52,7 @@ type Builder struct {
 	config     Config
 	runner     multistep.Runner
 	virtClient kubecli.KubevirtClient
+	kubeClient client.Client
 }
 
 func (b *Builder) ConfigSpec() hcldec.ObjectSpec {
@@ -68,10 +70,15 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 
 	// 0. Align logger log level on user bool input 'b.config.PackerDebug'	INFO/DEBUG
 	// 1. Validate configuration fields
-	// 2. Validate credentials (e.g. k8s client)
+	// 2. Validate credentials (e.g. k8s clients)
 	// 3. Any computed values (if needed)
 
 	b.virtClient, err = k8s.GetKubevirtClient()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	b.kubeClient, err = client.New(b.virtClient.Config(), client.Options{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -84,6 +91,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
 			VirtClient: b.virtClient,
+			KubeClient: b.kubeClient,
 			VmOptions: vmgenerator.VirtualMachineOptions{
 				Name:         b.config.KubernetesName,
 				Namespace:    b.config.KubernetesNamespace,

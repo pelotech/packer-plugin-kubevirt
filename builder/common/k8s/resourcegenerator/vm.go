@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
+	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"strings"
 )
@@ -198,6 +199,16 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			},
 			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					NodeSelector: map[string]string{
+						k8s.ImageBuilderTaintKey: k8s.ImageBuilderTaintValue,
+					},
+					Tolerations: []corev1.Toleration{
+						{
+							Key:      k8s.ImageBuilderTaintKey,
+							Operator: corev1.TolerationOpEqual,
+							Value:    k8s.ImageBuilderTaintValue,
+						},
+					},
 					ReadinessProbe: &kubevirtv1.Probe{
 						Handler: kubevirtv1.Handler{
 							Exec: &corev1.ExecAction{

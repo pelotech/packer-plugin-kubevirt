@@ -12,13 +12,15 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
+	generator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 )
 
 type StepDeployVM struct {
+	KubeClient client.Client
 	VirtClient kubecli.KubevirtClient
-	VmOptions  vmgenerator.VirtualMachineOptions
+	VmOptions  generator.VirtualMachineOptions
 }
 
 func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -27,10 +29,9 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	ns := s.VmOptions.Namespace
 	name := s.VmOptions.Name
 
-	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
-	_, err := s.VirtClient.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
-	if err != nil && !errors.IsAlreadyExists(err) {
-		err := fmt.Errorf("failed to create Virtual Machine namespace %s/%s: %s", ns, name, err)
+	err := s.bootstrapEnvironment(ns)
+	if err != nil {
+		err := fmt.Errorf("failed to bootstrap environment for Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
 		ui.Error(err.Error())
 
@@ -38,7 +39,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 
 	ui.Say(fmt.Sprintf("creating Virtual Machine %s/%s...", ns, name))
-	vm := vmgenerator.GenerateVirtualMachine(s.VmOptions)
+	vm := generator.GenerateVirtualMachine(s.VmOptions)
 	vm, err = s.VirtClient.VirtualMachine(ns).Create(context.TODO(), vm)
 	if err != nil {
 		err := fmt.Errorf("failed to create Virtual Machine %s/%s: %s", ns, name, err)
@@ -49,7 +50,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 
 	if s.VmOptions.S3ImageSource.AWSAccessKeyId != "" && s.VmOptions.S3ImageSource.AWSSecretAccessKey != "" {
-		s3CredentialsSecret := vmgenerator.GenerateS3CredentialsSecret(vm, s.VmOptions)
+		s3CredentialsSecret := generator.GenerateS3CredentialsSecret(vm, s.VmOptions)
 		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), s3CredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
 			err := fmt.Errorf("failed to create s3 credentials secret for Virtual Machine %s/%s: %s", ns, name, err)
@@ -60,7 +61,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		}
 	}
 
-	startupScriptSecret := vmgenerator.GenerateStartupScriptSecret(vm, s.VmOptions)
+	startupScriptSecret := generator.GenerateStartupScriptSecret(vm, s.VmOptions)
 	_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
 	if err != nil {
 		err := fmt.Errorf("failed to create startup script secret for Virtual Machine %s/%s: %s", ns, name, err)
@@ -71,7 +72,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 
 	if s.VmOptions.Credentials != nil {
-		userCredentialsSecret := vmgenerator.GenerateUserCredentialsSecret(vm, s.VmOptions)
+		userCredentialsSecret := generator.GenerateUserCredentialsSecret(vm, s.VmOptions)
 		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), userCredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
 			err := fmt.Errorf("failed to create user credentials secret for Virtual Machine %s/%s: %s", ns, name, err)
@@ -115,11 +116,35 @@ func (s *StepDeployVM) waitForVirtualMachine(ns, name string) error {
 	return k8s.WaitForResource(s.VirtClient.DynamicClient(), k8s.VirtualMachineGroupVersionResource, ns, name, 5*time.Minute, watchFunc)
 }
 
+func (s *StepDeployVM) bootstrapEnvironment(ns string) error {
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
+	_, err := s.VirtClient.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return err
+	}
+
+	nodePool := generator.GenerateNodePool()
+	err = s.KubeClient.Create(context.TODO(), nodePool)
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return err
+	}
+
+	ttlInSeconds := 120
+	pod := generator.GenerateInitPod(ns, ttlInSeconds)
+	_, err = s.VirtClient.CoreV1().Pods(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
+	if err != nil && !errors.IsAlreadyExists(err) {
+		return err
+	}
+
+	return nil
+}
+
 func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 	appContext := &common.AppContext{State: state}
 	name := appContext.GetVirtualMachine().Name
 	namespace := appContext.GetVirtualMachine().Namespace
 	deletionPropagation := metav1.DeletePropagationForeground
 
+	// NOTE: We don't delete the nodepool and namespace here because it may contain other resources
 	_ = s.VirtClient.VirtualMachine(namespace).Delete(context.TODO(), name, &metav1.DeleteOptions{PropagationPolicy: &deletionPropagation})
 }
