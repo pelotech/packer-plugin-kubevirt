@@ -1,4 +1,4 @@
-package resourcegenerator
+package generator
 
 import (
 	"fmt"

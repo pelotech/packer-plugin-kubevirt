@@ -14,7 +14,7 @@ import (
 	"log"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
+	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/generator"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"time"
 )

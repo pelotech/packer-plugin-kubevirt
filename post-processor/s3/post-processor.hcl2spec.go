@@ -18,7 +18,11 @@ type FlatConfig struct {
 	PackerOnError       *string           `mapstructure:"packer_on_error" cty:"packer_on_error" hcl:"packer_on_error"`
 	PackerUserVars      map[string]string `mapstructure:"packer_user_variables" cty:"packer_user_variables" hcl:"packer_user_variables"`
 	PackerSensitiveVars []string          `mapstructure:"packer_sensitive_variables" cty:"packer_sensitive_variables" hcl:"packer_sensitive_variables"`
-	MockOption          *string           `mapstructure:"mock" cty:"mock" hcl:"mock"`
+	S3Bucket            *string           `mapstructure:"s3_bucket" cty:"s3_bucket" hcl:"s3_bucket"`
+	S3Key               *string           `mapstructure:"s3_key" cty:"s3_key" hcl:"s3_key"`
+	AWSAccessKeyId      *string           `mapstructure:"aws_access_key_id" cty:"aws_access_key_id" hcl:"aws_access_key_id"`
+	AWSSecretAccessKey  *string           `mapstructure:"aws_secret_access_key" cty:"aws_secret_access_key" hcl:"aws_secret_access_key"`
+	AWSRegion           *string           `mapstructure:"aws_region" cty:"aws_region" hcl:"aws_region"`
 }
 
 // FlatMapstructure returns a new FlatConfig.
@@ -41,7 +45,11 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"packer_on_error":            &hcldec.AttrSpec{Name: "packer_on_error", Type: cty.String, Required: false},
 		"packer_user_variables":      &hcldec.AttrSpec{Name: "packer_user_variables", Type: cty.Map(cty.String), Required: false},
 		"packer_sensitive_variables": &hcldec.AttrSpec{Name: "packer_sensitive_variables", Type: cty.List(cty.String), Required: false},
-		"mock":                       &hcldec.AttrSpec{Name: "mock", Type: cty.String, Required: false},
+		"s3_bucket":                  &hcldec.AttrSpec{Name: "s3_bucket", Type: cty.String, Required: false},
+		"s3_key":                     &hcldec.AttrSpec{Name: "s3_key", Type: cty.String, Required: false},
+		"aws_access_key_id":          &hcldec.AttrSpec{Name: "aws_access_key_id", Type: cty.String, Required: false},
+		"aws_secret_access_key":      &hcldec.AttrSpec{Name: "aws_secret_access_key", Type: cty.String, Required: false},
+		"aws_region":                 &hcldec.AttrSpec{Name: "aws_region", Type: cty.String, Required: false},
 	}
 	return s
 }

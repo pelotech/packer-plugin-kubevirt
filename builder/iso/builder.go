@@ -4,6 +4,7 @@ package iso
 
 import (
 	"context"
+	"fmt"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer-plugin-sdk/common"
 	"github.com/hashicorp/packer-plugin-sdk/communicator"
@@ -15,19 +16,14 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
+	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	BuilderId              = "kubevirt.iso"
-	VirtualMachineHost     = "127.0.0.1"
-	VirtualMachineUsername = "packer"
-	VirtualMachinePassword = "packer"
-	DefaultSSHPort         = 22
-	DefaultWinRMPort       = 5985
+	builderId = "kubevirt.iso"
 )
 
 type Config struct {
@@ -61,7 +57,7 @@ func (b *Builder) ConfigSpec() hcldec.ObjectSpec {
 
 func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings []string, err error) {
 	err = config.Decode(&b.config, &config.DecodeOpts{
-		PluginType:  BuilderId,
+		PluginType:  builderId,
 		Interpolate: true,
 	}, raws...)
 	if err != nil {
@@ -92,11 +88,11 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		&stepDef.StepDeployVM{
 			VirtClient: b.virtClient,
 			KubeClient: b.kubeClient,
-			VmOptions: vmgenerator.VirtualMachineOptions{
+			VmOptions: generator.VirtualMachineOptions{
 				Name:         b.config.KubernetesName,
 				Namespace:    b.config.KubernetesNamespace,
 				OsPreference: b.config.KubevirtOsPreference,
-				S3ImageSource: vmgenerator.S3ImageSource{
+				S3ImageSource: generator.S3ImageSource{
 					URL:                b.config.SourceS3Url,
 					AWSAccessKeyId:     b.config.SourceAWSAccessKeyId,
 					AWSSecretAccessKey: b.config.SourceAWSSecretAccessKey,
@@ -106,31 +102,35 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		&stepDef.StepPortForwardVM{
 			VirtClient: b.virtClient,
+			PortMappings: []string{
+				fmt.Sprintf("%d:%d", utils.GetOrDefault(b.config.SSHPort, buildercommon.DefaultSSHPort), buildercommon.DefaultSSHPort),
+				fmt.Sprintf("%d:%d", utils.GetOrDefault(b.config.WinRMPort, buildercommon.DefaultWinRMPort), buildercommon.DefaultWinRMPort),
+			},
 		},
 		&communicator.StepConnect{
 			Host: func(bag multistep.StateBag) (string, error) {
-				return VirtualMachineHost, nil
+				return buildercommon.VirtualMachineHost, nil
 			},
 			SSHConfig: func(bag multistep.StateBag) (*gossh.ClientConfig, error) {
 				return &gossh.ClientConfig{
-					User: VirtualMachineUsername,
+					User: buildercommon.VirtualMachineUsername,
 					Auth: []gossh.AuthMethod{
-						gossh.Password(VirtualMachinePassword),
+						gossh.Password(buildercommon.VirtualMachinePassword),
 					},
 					HostKeyCallback: gossh.InsecureIgnoreHostKey(),
 				}, nil
 			},
 			SSHPort: func(bag multistep.StateBag) (int, error) {
-				return utils.GetOrDefault(b.config.SSHPort, DefaultSSHPort), nil
+				return utils.GetOrDefault(b.config.SSHPort, buildercommon.DefaultSSHPort), nil
 			},
 			WinRMConfig: func(bag multistep.StateBag) (*communicator.WinRMConfig, error) {
 				return &communicator.WinRMConfig{
-					Username: VirtualMachineUsername,
-					Password: VirtualMachinePassword,
+					Username: buildercommon.VirtualMachineUsername,
+					Password: buildercommon.VirtualMachinePassword,
 				}, nil
 			},
 			WinRMPort: func(bag multistep.StateBag) (int, error) {
-				return utils.GetOrDefault(b.config.WinRMPort, DefaultWinRMPort), nil
+				return utils.GetOrDefault(b.config.WinRMPort, buildercommon.DefaultWinRMPort), nil
 			},
 		},
 		&commonsteps.StepProvision{},
@@ -154,5 +154,5 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		return nil, err
 	}
 
-	return appContext.BuildArtifact(), nil
+	return appContext.BuildArtifact(builderId), nil
 }

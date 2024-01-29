@@ -3,22 +3,17 @@
 
 package common
 
-import "packer-plugin-kubevirt/builder/iso"
-
-const (
-	InternalUrlArtifact  = "internal_url"
-	InternalCertArtifact = "internal_cert"
-)
-
 // Artifact packersdk.Artifact implementation
 type Artifact struct {
+	// BuilderId is the unique ID for the builder that created this VM Image
+	BuilderIdValue string
 	// StateData should store data such as GeneratedData
 	// to be common with post-processors
 	StateData map[string]interface{}
 }
 
-func (*Artifact) BuilderId() string {
-	return iso.BuilderId
+func (a *Artifact) BuilderId() string {
+	return a.BuilderIdValue
 }
 
 func (a *Artifact) Files() []string {

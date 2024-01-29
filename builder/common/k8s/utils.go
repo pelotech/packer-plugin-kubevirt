@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
 	"kubevirt.io/client-go/kubecli"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -18,12 +19,34 @@ import (
 const (
 	ImageBuilderTaintKey   = "pelo.tech/uki-labs"
 	ImageBuilderTaintValue = "builder"
+	PortFowardTimeout      = 5 * time.Second
 )
 
-func RunPortForward(client kubecli.KubevirtClient, podName, namespace string, ports []string) error {
+func RunAsyncPortForward(client kubecli.KubevirtClient, podName, namespace string, ports []string) (chan struct{}, error) {
+	stopChan := make(chan struct{}, 1)
+	readyChan := make(chan struct{})
+
+	go func() {
+		err := runPortForward(client, podName, namespace, ports, readyChan, stopChan)
+		if err != nil {
+			log.Printf("error while running port forwarding: %v", err)
+		}
+	}()
+
+	select {
+	case <-readyChan:
+		log.Printf("Port forwarding is ready.")
+	case <-time.After(PortFowardTimeout):
+		return nil, fmt.Errorf("timeout waiting for port forwarding to be ready")
+	}
+
+	return stopChan, nil
+}
+
+func runPortForward(client kubecli.KubevirtClient, podName, namespace string, ports []string, ready, stop chan struct{}) error {
 	url := client.CoreV1().RESTClient().Post().
-		Resource("pods").
 		Namespace(namespace).
+		Resource("pods").
 		Name(podName).
 		SubResource("portforward").
 		URL()
@@ -34,7 +57,7 @@ func RunPortForward(client kubecli.KubevirtClient, podName, namespace string, po
 	}
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: roundTripper}, http.MethodPost, url)
 
-	forwarder, err := portforward.New(dialer, ports, make(chan struct{}, 1), make(chan struct{}, 1), os.Stdout, os.Stderr)
+	forwarder, err := portforward.New(dialer, ports, stop, ready, os.Stdout, os.Stderr)
 	if err != nil {
 		return err
 	}

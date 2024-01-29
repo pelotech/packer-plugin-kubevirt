@@ -12,7 +12,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	generator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
+	generator "packer-plugin-kubevirt/builder/common/k8s/generator"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 )
@@ -29,7 +29,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	ns := s.VmOptions.Namespace
 	name := s.VmOptions.Name
 
-	err := s.bootstrapEnvironment(ns)
+	err := s.bootstrapEnvironment(ns, name)
 	if err != nil {
 		err := fmt.Errorf("failed to bootstrap environment for Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
@@ -116,7 +116,7 @@ func (s *StepDeployVM) waitForVirtualMachine(ns, name string) error {
 	return k8s.WaitForResource(s.VirtClient.DynamicClient(), k8s.VirtualMachineGroupVersionResource, ns, name, 5*time.Minute, watchFunc)
 }
 
-func (s *StepDeployVM) bootstrapEnvironment(ns string) error {
+func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
 	_, err := s.VirtClient.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
 	if err != nil && !errors.IsAlreadyExists(err) {
@@ -130,7 +130,7 @@ func (s *StepDeployVM) bootstrapEnvironment(ns string) error {
 	}
 
 	ttlInSeconds := 120
-	pod := generator.GenerateInitPod(ns, ttlInSeconds)
+	pod := generator.GenerateInitPod(ns, name, ttlInSeconds)
 	_, err = s.VirtClient.CoreV1().Pods(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
 	if err != nil && !errors.IsAlreadyExists(err) {
 		return err
@@ -144,7 +144,6 @@ func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 	name := appContext.GetVirtualMachine().Name
 	namespace := appContext.GetVirtualMachine().Namespace
 	deletionPropagation := metav1.DeletePropagationForeground
-
-	// NOTE: We don't delete the nodepool and namespace here because it may contain other resources
+	// NOTE: We don't delete the node pool and namespace here because it may contain other resources that are not created by this build context.
 	_ = s.VirtClient.VirtualMachine(namespace).Delete(context.TODO(), name, &metav1.DeleteOptions{PropagationPolicy: &deletionPropagation})
 }

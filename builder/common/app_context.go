@@ -17,6 +17,12 @@ const (
 	VirtualMachine            StateBagEntry = "vm"
 	VirtualMachineExport      StateBagEntry = "vmexport"
 	VirtualMachineExportToken StateBagEntry = "vmexporttoken"
+
+	VirtualMachineHost     = "127.0.0.1"
+	VirtualMachineUsername = "packer"
+	VirtualMachinePassword = "packer"
+	DefaultSSHPort         = 22
+	DefaultWinRMPort       = 5985
 )
 
 type AppContext struct {
@@ -43,8 +49,9 @@ func (s *AppContext) GetVirtualMachineExportToken() string {
 	return s.get(VirtualMachineExportToken).(string)
 }
 
-func (s *AppContext) BuildArtifact() packersdk.Artifact {
+func (s *AppContext) BuildArtifact(builderId string) packersdk.Artifact {
 	return &Artifact{
+		BuilderIdValue: builderId,
 		StateData: map[string]interface{}{
 			string(VirtualMachine):            s.GetVirtualMachine(),
 			string(VirtualMachineExport):      s.GetVirtualMachineExport(),

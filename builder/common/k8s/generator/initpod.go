@@ -1,16 +1,17 @@
-package resourcegenerator
+package generator
 
 import (
+	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"strconv"
 )
 
-func GenerateInitPod(ns string, ttlInSeconds int) *corev1.Pod {
+func GenerateInitPod(ns, name string, ttlInSeconds int) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "init",
+			Name:      fmt.Sprintf("%s-init", name),
 			Namespace: ns,
 		},
 		Spec: corev1.PodSpec{

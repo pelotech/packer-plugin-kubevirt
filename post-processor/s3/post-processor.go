@@ -15,7 +15,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/resourcegenerator"
+	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/generator"
 	"packer-plugin-kubevirt/post-processor/common"
 )
 
