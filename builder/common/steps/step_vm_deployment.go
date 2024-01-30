@@ -12,15 +12,16 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	generator "packer-plugin-kubevirt/builder/common/k8s/generator"
+	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 )
 
 type StepDeployVM struct {
-	KubeClient client.Client
-	VirtClient kubecli.KubevirtClient
-	VmOptions  generator.VirtualMachineOptions
+	KubeClient           client.Client
+	VirtClient           kubecli.KubevirtClient
+	VmOptions            generator.VirtualMachineOptions
+	UseKarpenterNodePool bool
 }
 
 func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -49,7 +50,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		return multistep.ActionHalt
 	}
 
-	if s.VmOptions.S3ImageSource.AWSAccessKeyId != "" && s.VmOptions.S3ImageSource.AWSSecretAccessKey != "" {
+	if s.VmOptions.ImageSource.AWSAccessKeyId != "" && s.VmOptions.ImageSource.AWSSecretAccessKey != "" {
 		s3CredentialsSecret := generator.GenerateS3CredentialsSecret(vm, s.VmOptions)
 		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), s3CredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
@@ -123,17 +124,19 @@ func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
 		return err
 	}
 
-	nodePool := generator.GenerateNodePool()
-	err = s.KubeClient.Create(context.TODO(), nodePool)
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
-	}
+	if s.UseKarpenterNodePool {
+		nodePool := generator.GenerateNodePool()
+		err = s.KubeClient.Create(context.TODO(), nodePool)
+		if err != nil && !errors.IsAlreadyExists(err) {
+			return err
+		}
 
-	ttlInSeconds := 120
-	pod := generator.GenerateInitPod(ns, name, ttlInSeconds)
-	_, err = s.VirtClient.CoreV1().Pods(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
+		ttlInSeconds := 120
+		pod := generator.GenerateInitPod(ns, name, ttlInSeconds)
+		_, err = s.VirtClient.CoreV1().Pods(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
+		if err != nil && !errors.IsAlreadyExists(err) {
+			return err
+		}
 	}
 
 	return nil

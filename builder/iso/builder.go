@@ -29,8 +29,9 @@ const (
 type Config struct {
 	common.PackerConfig `mapstructure:",squash"`
 
-	KubernetesName      string `mapstructure:"kubernetes_name"`
-	KubernetesNamespace string `mapstructure:"kubernetes_namespace"`
+	KubernetesName                 string `mapstructure:"kubernetes_name"`
+	KubernetesNamespace            string `mapstructure:"kubernetes_namespace"`
+	KubernetesUseKarpenterNodePool bool   `mapstructure:"kubernetes_use_karpenter_node_pool"`
 
 	KubevirtOsPreference string `mapstructure:"kubevirt_os_preference"`
 
@@ -39,7 +40,7 @@ type Config struct {
 	SSHPort   int `mapstructure:"ssh_port"`
 	WinRMPort int `mapstructure:"winrm_port"`
 
-	SourceS3Url              string `mapstructure:"source_s3_url"`
+	SourceUrl                string `mapstructure:"source_url"`
 	SourceAWSAccessKeyId     string `mapstructure:"source_aws_access_key_id"`
 	SourceAWSSecretAccessKey string `mapstructure:"source_aws_secret_access_key"`
 }
@@ -86,14 +87,15 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
-			VirtClient: b.virtClient,
-			KubeClient: b.kubeClient,
+			VirtClient:           b.virtClient,
+			KubeClient:           b.kubeClient,
+			UseKarpenterNodePool: b.config.KubernetesUseKarpenterNodePool,
 			VmOptions: generator.VirtualMachineOptions{
 				Name:         b.config.KubernetesName,
 				Namespace:    b.config.KubernetesNamespace,
 				OsPreference: b.config.KubevirtOsPreference,
-				S3ImageSource: generator.S3ImageSource{
-					URL:                b.config.SourceS3Url,
+				ImageSource: generator.ImageSource{
+					URL:                b.config.SourceUrl,
 					AWSAccessKeyId:     b.config.SourceAWSAccessKeyId,
 					AWSSecretAccessKey: b.config.SourceAWSSecretAccessKey,
 				},

@@ -13,12 +13,12 @@ import (
 )
 
 type VirtualMachineOptions struct {
-	Name          string
-	Namespace     string
-	OsPreference  string
-	S3ImageSource S3ImageSource
-	Credentials   *AccessCredentials
-	DiskSpace     string
+	Name         string
+	Namespace    string
+	OsPreference string
+	ImageSource  ImageSource
+	Credentials  *AccessCredentials
+	DiskSpace    string
 }
 
 type AccessCredentials struct {
@@ -26,7 +26,7 @@ type AccessCredentials struct {
 	Password string
 }
 
-type S3ImageSource struct {
+type ImageSource struct {
 	URL                string
 	AWSAccessKeyId     string
 	AWSSecretAccessKey string
@@ -137,8 +137,8 @@ func GenerateS3CredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 			},
 		},
 		StringData: map[string]string{
-			"accessKeyId": opts.S3ImageSource.AWSAccessKeyId,
-			"secretKey":   opts.S3ImageSource.AWSSecretAccessKey,
+			"accessKeyId": opts.ImageSource.AWSAccessKeyId,
+			"secretKey":   opts.ImageSource.AWSSecretAccessKey,
 		},
 		Type: corev1.SecretTypeOpaque,
 	}
@@ -178,13 +178,21 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 		accessCredentials = append(accessCredentials, generateUserPasswordAccessCredential(secretName))
 	}
 
-	var secretName string
-	if opts.S3ImageSource.AWSAccessKeyId != "" && opts.S3ImageSource.AWSSecretAccessKey != "" {
-		secretName = buildSecretName(opts.Name, S3CredentialsSuffix)
-	}
-	dataVolumeSourceS3 := &cdiv1beta1.DataVolumeSourceS3{
-		URL:       opts.S3ImageSource.URL,
-		SecretRef: secretName,
+	var dataVolumeSource *cdiv1beta1.DataVolumeSource
+	if opts.ImageSource.AWSAccessKeyId != "" && opts.ImageSource.AWSSecretAccessKey != "" {
+		secretName := buildSecretName(opts.Name, S3CredentialsSuffix)
+		dataVolumeSource = &cdiv1beta1.DataVolumeSource{
+			S3: &cdiv1beta1.DataVolumeSourceS3{
+				URL:       opts.ImageSource.URL,
+				SecretRef: secretName,
+			},
+		}
+	} else {
+		dataVolumeSource = &cdiv1beta1.DataVolumeSource{
+			HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
+				URL: opts.ImageSource.URL,
+			},
+		}
 	}
 
 	return &kubevirtv1.VirtualMachine{
@@ -246,9 +254,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 								},
 							},
 						},
-						Source: &cdiv1beta1.DataVolumeSource{
-							S3: dataVolumeSourceS3,
-						},
+						Source: dataVolumeSource,
 					},
 				},
 				{
