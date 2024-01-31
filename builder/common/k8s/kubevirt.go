@@ -2,12 +2,13 @@ package k8s
 
 import (
 	"fmt"
+	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/util/homedir"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 	"os"
-	"path/filepath"
 )
 
 var VirtualMachineGroupVersionResource = schema.GroupVersionResource{
@@ -17,17 +18,32 @@ var VirtualMachineGroupVersionResource = schema.GroupVersionResource{
 }
 
 func GetKubevirtClient() (kubecli.KubevirtClient, error) {
-	kubeconfig := os.Getenv("KUBECONFIG")
+	var client kubecli.KubevirtClient
+	var err error
 
-	if kubeconfig == "" {
-		if home := homedir.HomeDir(); home != "" {
-			kubeconfig = filepath.Join(home, ".kube", "config")
+	kubeconfig := os.Getenv(clientcmd.RecommendedConfigPathEnvVar)
+	if kubeconfig != "" {
+		var config *restclient.Config
+		config, err = kubecli.DefaultClientConfig(&pflag.FlagSet{}).ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create default kube config: %w", err)
+		}
+
+		client, err = kubecli.GetKubevirtClientFromRESTConfig(config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create kube client: %w", err)
+		}
+
+	} else {
+		client, err = kubecli.GetKubevirtClientFromFlags("", "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create in-cluster kube client: %w", err)
 		}
 	}
 
-	client, err := kubecli.GetKubevirtClientFromFlags("", kubeconfig)
+	_, err = client.ServerVersion().Get()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get Kubevirt client: %w", err)
+		return nil, fmt.Errorf("failed to retrieve server version. Please check your authentication credentials: %w", err)
 	}
 
 	return client, nil
