@@ -3,7 +3,7 @@ module packer-plugin-kubevirt
 go 1.21
 
 require (
-	github.com/aws/karpenter v0.33.1
+	github.com/aws/karpenter v0.33.2
 	// Force version for gnostic libs to avoid breaking changes
 	github.com/google/gnostic v0.7.0 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
@@ -20,6 +20,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.17.0
 	sigs.k8s.io/karpenter v0.33.2
 )
+
+require github.com/spf13/pflag v1.0.5
 
 require (
 	cloud.google.com/go v0.110.8 // indirect
@@ -121,7 +123,6 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/samber/lo v1.39.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/ugorji/go/codec v1.2.6 // indirect
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	go.opencensus.io v0.24.0 // indirect

@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"embed"
 	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -9,7 +10,15 @@ import (
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/utils"
+	"path"
 	"strings"
+)
+
+//go:embed scripts/*
+var scripts embed.FS
+
+const (
+	VirtioDriversURL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
 )
 
 type VirtualMachineOptions struct {
@@ -84,8 +93,8 @@ func buildProbeExecCommand(family OsFamily) []string {
 	switch family {
 	case Linux:
 		command = []string{
-			"/bin/sh",
-			"-c",
+			//"/bin/sh",
+			//"-c",
 			"cloud-init",
 			"status",
 		}
@@ -102,16 +111,24 @@ func buildProbeExecCommand(family OsFamily) []string {
 	return command
 }
 
-func GenerateStartupScriptSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
+func GenerateStartupScriptSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) (*corev1.Secret, error) {
 	data := make(map[string]string)
 	scriptsDir := "scripts"
+
+	var rawData []byte
+	var err error
 	switch getOSFamily(opts.OsPreference) {
 	case Linux:
 		filename := "cloud-init.yaml"
-		data["userdata"] = utils.ReadFile(scriptsDir, filename)
+		rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
+		data["userData"] = string(rawData)
 	case Windows:
 		filename := "autounattend.xml"
-		data[filename] = utils.ReadFile(scriptsDir, filename)
+		rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
+		data[filename] = string(rawData)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read startup script file: %s", err)
 	}
 
 	return &corev1.Secret{
@@ -124,7 +141,7 @@ func GenerateStartupScriptSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 		},
 		StringData: data,
 		Type:       corev1.SecretTypeOpaque,
-	}
+	}, nil
 }
 
 func GenerateS3CredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
@@ -167,6 +184,7 @@ func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMa
 }
 
 func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachine {
+	isRunning := true
 	osFamily := getOSFamily(opts.OsPreference)
 	disks := generateDisks(osFamily, opts)
 	volumes := generateVolumes(osFamily, opts)
@@ -178,22 +196,23 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 		accessCredentials = append(accessCredentials, generateUserPasswordAccessCredential(secretName))
 	}
 
-	var dataVolumeSource *cdiv1beta1.DataVolumeSource
+	var dataVolumeSource cdiv1beta1.DataVolumeSource
 	if opts.ImageSource.AWSAccessKeyId != "" && opts.ImageSource.AWSSecretAccessKey != "" {
 		secretName := buildSecretName(opts.Name, S3CredentialsSuffix)
-		dataVolumeSource = &cdiv1beta1.DataVolumeSource{
+		dataVolumeSource = cdiv1beta1.DataVolumeSource{
 			S3: &cdiv1beta1.DataVolumeSourceS3{
 				URL:       opts.ImageSource.URL,
 				SecretRef: secretName,
 			},
 		}
 	} else {
-		dataVolumeSource = &cdiv1beta1.DataVolumeSource{
+		dataVolumeSource = cdiv1beta1.DataVolumeSource{
 			HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
 				URL: opts.ImageSource.URL,
 			},
 		}
 	}
+	dataVolumeTemplates := generateDataVolumeTemplates(osFamily, dataVolumeSource, opts.Name, opts.DiskSpace)
 
 	return &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -201,6 +220,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			Namespace: opts.Namespace,
 		},
 		Spec: kubevirtv1.VirtualMachineSpec{
+			Running: &isRunning,
 			Preference: &kubevirtv1.PreferenceMatcher{
 				Kind: "VirtualMachineClusterPreference",
 				Name: opts.OsPreference,
@@ -241,44 +261,59 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 					Volumes: volumes,
 				},
 			},
-			DataVolumeTemplates: []kubevirtv1.DataVolumeTemplateSpec{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: buildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
+			DataVolumeTemplates: dataVolumeTemplates,
+		},
+	}
+}
+
+func generateDataVolumeTemplates(family OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSpace string) []kubevirtv1.DataVolumeTemplateSpec {
+	templates := []kubevirtv1.DataVolumeTemplateSpec{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: buildDataVolumeName(vmName, SourceDataVolumeSuffix),
+			},
+			Spec: cdiv1beta1.DataVolumeSpec{
+				PVC: &corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{
+						corev1.ReadWriteOnce,
 					},
-					Spec: cdiv1beta1.DataVolumeSpec{
-						PVC: &corev1.PersistentVolumeClaimSpec{
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceStorage: resource.MustParse(opts.DiskSpace),
-								},
-							},
-						},
-						Source: dataVolumeSource,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: buildDataVolumeName(opts.Name, VirtioDataVolumeSuffix),
-					},
-					Spec: cdiv1beta1.DataVolumeSpec{
-						PVC: &corev1.PersistentVolumeClaimSpec{
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceStorage: resource.MustParse("1Gi"),
-								},
-							},
-						},
-						Source: &cdiv1beta1.DataVolumeSource{
-							HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
-								URL: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso",
-							},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSpace),
 						},
 					},
 				},
+				Source: &dvSource,
 			},
 		},
 	}
+
+	if family == Windows {
+		templates = append(templates, kubevirtv1.DataVolumeTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: buildDataVolumeName(vmName, VirtioDataVolumeSuffix),
+			},
+			Spec: cdiv1beta1.DataVolumeSpec{
+				PVC: &corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{
+						corev1.ReadWriteOnce,
+					},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("1Gi"),
+						},
+					},
+				},
+				Source: &cdiv1beta1.DataVolumeSource{
+					HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
+						URL: VirtioDriversURL,
+					},
+				},
+			},
+		})
+	}
+
+	return templates
 }
 
 /*

@@ -12,10 +12,13 @@ ssh_pwauth: True
 chpasswd: { expire: False }
 
 package_update: true
-package_upgrade: true
+package_upgrade: false
 packages:
   - qemu-guest-agent
 
 runcmd:
-  - systemctl enable qemu-guest-agent
-  - systemctl start qemu-guest-agent
+  - ["sudo", "systemctl", "enable", "--now", "qemu-guest-agent"]
+
+power_state:
+  mode: reboot
+  message: Rebooting after package installation.

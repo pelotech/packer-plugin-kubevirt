@@ -5,6 +5,7 @@ package iso
 import (
 	"context"
 	"fmt"
+	awsv1beta1 "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer-plugin-sdk/common"
 	"github.com/hashicorp/packer-plugin-sdk/communicator"
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	gossh "golang.org/x/crypto/ssh"
+	"k8s.io/apimachinery/pkg/runtime"
 	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
@@ -20,6 +22,7 @@ import (
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	v1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 )
 
 const (
@@ -75,7 +78,20 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 		return nil, nil, err
 	}
 
-	b.kubeClient, err = client.New(b.virtClient.Config(), client.Options{})
+	scheme := runtime.NewScheme()
+	builders := []runtime.SchemeBuilder{
+		awsv1beta1.SchemeBuilder,
+		v1beta1.SchemeBuilder,
+	}
+	for _, builder := range builders {
+		err = builder.AddToScheme(scheme)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	b.kubeClient, err = client.New(b.virtClient.Config(), client.Options{
+		Scheme: scheme,
+	})
 	if err != nil {
 		return nil, nil, err
 	}

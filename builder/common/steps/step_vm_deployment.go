@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/rest"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
@@ -49,6 +50,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 		return multistep.ActionHalt
 	}
+	appContext.Put(common.VirtualMachine, vm)
 
 	if s.VmOptions.ImageSource.AWSAccessKeyId != "" && s.VmOptions.ImageSource.AWSSecretAccessKey != "" {
 		s3CredentialsSecret := generator.GenerateS3CredentialsSecret(vm, s.VmOptions)
@@ -62,7 +64,14 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		}
 	}
 
-	startupScriptSecret := generator.GenerateStartupScriptSecret(vm, s.VmOptions)
+	startupScriptSecret, err := generator.GenerateStartupScriptSecret(vm, s.VmOptions)
+	if err != nil {
+		err := fmt.Errorf("failed to generate startup script secret spec for Virtual Machine %s/%s: %s", ns, name, err)
+		appContext.Put(common.PackerError, err)
+		ui.Error(err.Error())
+
+		return multistep.ActionHalt
+	}
 	_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
 	if err != nil {
 		err := fmt.Errorf("failed to create startup script secret for Virtual Machine %s/%s: %s", ns, name, err)
@@ -84,24 +93,22 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		}
 	}
 
-	err = s.waitForVirtualMachine(ns, name)
+	err = waitForVirtualMachine(s.VirtClient.RestClient(), ns, name)
 	if err != nil {
-		err = fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine: %s/%s: %s", ns, name, err)
+		err = fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
 		ui.Error(err.Error())
 
 		return multistep.ActionHalt
 	}
 
-	ui.Say(fmt.Sprintf("deployment step has completed for Virtual Machine: %s/%s", ns, name))
-
-	appContext.Put(common.VirtualMachine, vm)
+	ui.Say(fmt.Sprintf("deployment step has completed for Virtual Machine %s/%s", ns, name))
 
 	return multistep.ActionContinue
 }
 
-func (s *StepDeployVM) waitForVirtualMachine(ns, name string) error {
-	watchFunc := func(ctx context.Context, event watch.Event) (bool, error) {
+func waitForVirtualMachine(client *rest.RESTClient, ns, name string) error {
+	watchFunc := func(event watch.Event) (bool, error) {
 		vm, ok := event.Object.(*kubevirtv1.VirtualMachine)
 		if !ok {
 			return false, fmt.Errorf("unexpected type for %v", event.Object)
@@ -114,7 +121,13 @@ func (s *StepDeployVM) waitForVirtualMachine(ns, name string) error {
 		}
 		return false, nil
 	}
-	return k8s.WaitForResource(s.VirtClient.DynamicClient(), k8s.VirtualMachineGroupVersionResource, ns, name, 5*time.Minute, watchFunc)
+
+	_, err := k8s.WaitForResource(client, k8s.VirtualMachineGroupVersionResource, ns, name, 8*time.Minute, watchFunc)
+	if err != nil {
+		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", ns, name, err)
+	}
+
+	return nil
 }
 
 func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
@@ -149,4 +162,5 @@ func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 	deletionPropagation := metav1.DeletePropagationForeground
 	// NOTE: We don't delete the node pool and namespace here because it may contain other resources that are not created by this build context.
 	_ = s.VirtClient.VirtualMachine(namespace).Delete(context.TODO(), name, &metav1.DeleteOptions{PropagationPolicy: &deletionPropagation})
+	appContext.GetPackerUi().Message(fmt.Sprintf("clean up - Virtual Machine %s/%s has been deleted", namespace, name))
 }

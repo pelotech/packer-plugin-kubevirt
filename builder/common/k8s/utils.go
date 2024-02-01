@@ -3,11 +3,13 @@ package k8s
 import (
 	"context"
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/portforward"
+	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/client-go/transport/spdy"
 	"kubevirt.io/client-go/kubecli"
 	"log"
@@ -67,26 +69,15 @@ func runPortForward(client kubecli.KubevirtClient, podName, namespace string, po
 
 type HandleEventFunc func(context.Context, watch.Event) (bool, error)
 
-func WaitForResource(client dynamic.Interface, resource schema.GroupVersionResource, namespace, name string, timeout time.Duration, handleEvent HandleEventFunc) error {
+func WaitForResource(client *rest.RESTClient, gvr schema.GroupVersionResource, namespace, name string, timeout time.Duration, handleEvent watchtools.ConditionFunc) (*watch.Event, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
 	defer cancel()
 
-	current, err := client.Resource(resource).Namespace(namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("metadata.name=%s", name),
-	})
+	listWatch := cache.NewListWatchFromClient(client, gvr.Resource, namespace, fields.OneTermEqualSelector("metadata.name", name))
+	event, err := watchtools.Until(ctx, gvr.Version, listWatch, handleEvent)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for event := range current.ResultChan() {
-		done, err := handleEvent(ctx, event)
-		if err != nil {
-			return err
-		}
-		if done {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("resource %s/%s did not meet the required condition within the specified timeout", resource, name)
+	return event, nil
 }

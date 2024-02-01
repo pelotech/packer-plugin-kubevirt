@@ -4,6 +4,7 @@ import (
 	awsv1beta1 "github.com/aws/karpenter/pkg/apis/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 	"time"
@@ -24,9 +25,15 @@ func GenerateNodePool() *v1beta1.NodePool {
 				},
 			},
 			Template: v1beta1.NodeClaimTemplate{
+				ObjectMeta: v1beta1.ObjectMeta{
+					Labels: map[string]string{
+						k8s.ImageBuilderTaintKey:   k8s.ImageBuilderTaintValue,
+						kubevirtv1.NodeSchedulable: "true",
+					},
+				},
 				Spec: v1beta1.NodeClaimSpec{
 					NodeClassRef: &v1beta1.NodeClassReference{
-						APIVersion: "karpenter.k8s.aws/v1beta1",
+						APIVersion: v1beta1.SchemeGroupVersion.String(),
 						Kind:       "EC2NodeClass",
 						Name:       "default",
 					},

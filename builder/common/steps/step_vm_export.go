@@ -75,19 +75,13 @@ func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine, token string)
 }
 
 func (s *StepExportVM) waitForExportReady(ns, name string) error {
-	watchFunc := func(ctx context.Context, event watch.Event) (bool, error) {
+	watchFunc := func(event watch.Event) (bool, error) {
 		export, err := event.Object.(*exportv1.VirtualMachineExport)
 		if !err {
 			return false, fmt.Errorf("unexpected type for %v", event.Object)
 		}
+
 		switch export.Status.Phase {
-		case exportv1.Pending:
-			select {
-			case <-ctx.Done():
-				return false, fmt.Errorf("timeout waiting for Virtual Machine Export '%s'", name)
-			case <-time.After(5 * time.Second):
-				// Continue waiting
-			}
 		case exportv1.Ready:
 			log.Printf("Virtual Machine Export '%s' is now ready", name)
 			return true, nil
@@ -97,7 +91,13 @@ func (s *StepExportVM) waitForExportReady(ns, name string) error {
 
 		return false, nil
 	}
-	return k8s.WaitForResource(s.VirtClient.DynamicClient(), k8s.VirtualMachineGroupVersionResource, ns, name, 5*time.Minute, watchFunc)
+
+	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), k8s.VirtualMachineGroupVersionResource, ns, name, 5*time.Minute, watchFunc)
+	if err != nil {
+		return fmt.Errorf("failed to wait for Virtual Machine Export %s/%s to be ready: %s", ns, name, err)
+	}
+
+	return nil
 
 }
 

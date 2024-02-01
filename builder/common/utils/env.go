@@ -1,9 +1,7 @@
 package utils
 
 import (
-	"log"
 	"os"
-	"path/filepath"
 )
 
 func GetEnv(key, defaultValue string) string {
@@ -19,13 +17,4 @@ func GetOrDefault(value, defaultValue int) int {
 		return defaultValue
 	}
 	return value
-}
-
-func ReadFile(path, filename string) string {
-	scriptData, err := os.ReadFile(filepath.Join(path, filename))
-	if err != nil {
-		log.Printf("error reading file: %s", err)
-	}
-
-	return string(scriptData)
 }
