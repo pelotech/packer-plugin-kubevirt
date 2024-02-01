@@ -3,6 +3,8 @@
 package iso
 
 import (
+	"packer-plugin-kubevirt/builder/common/k8s"
+
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -10,24 +12,24 @@ import (
 // FlatConfig is an auto-generated flat version of Config.
 // Where the contents of a field with a `mapstructure:,squash` tag are bubbled up.
 type FlatConfig struct {
-	PackerBuildName                *string           `mapstructure:"packer_build_name" cty:"packer_build_name" hcl:"packer_build_name"`
-	PackerBuilderType              *string           `mapstructure:"packer_builder_type" cty:"packer_builder_type" hcl:"packer_builder_type"`
-	PackerCoreVersion              *string           `mapstructure:"packer_core_version" cty:"packer_core_version" hcl:"packer_core_version"`
-	PackerDebug                    *bool             `mapstructure:"packer_debug" cty:"packer_debug" hcl:"packer_debug"`
-	PackerForce                    *bool             `mapstructure:"packer_force" cty:"packer_force" hcl:"packer_force"`
-	PackerOnError                  *string           `mapstructure:"packer_on_error" cty:"packer_on_error" hcl:"packer_on_error"`
-	PackerUserVars                 map[string]string `mapstructure:"packer_user_variables" cty:"packer_user_variables" hcl:"packer_user_variables"`
-	PackerSensitiveVars            []string          `mapstructure:"packer_sensitive_variables" cty:"packer_sensitive_variables" hcl:"packer_sensitive_variables"`
-	KubernetesName                 *string           `mapstructure:"kubernetes_name" cty:"kubernetes_name" hcl:"kubernetes_name"`
-	KubernetesNamespace            *string           `mapstructure:"kubernetes_namespace" cty:"kubernetes_namespace" hcl:"kubernetes_namespace"`
-	KubernetesUseKarpenterNodePool *bool             `mapstructure:"kubernetes_use_karpenter_node_pool" cty:"kubernetes_use_karpenter_node_pool" hcl:"kubernetes_use_karpenter_node_pool"`
-	KubevirtOsPreference           *string           `mapstructure:"kubevirt_os_preference" cty:"kubevirt_os_preference" hcl:"kubevirt_os_preference"`
-	VirtualMachineDiskSpace        *string           `mapstructure:"vm_disk_space" cty:"vm_disk_space" hcl:"vm_disk_space"`
-	SSHPort                        *int              `mapstructure:"ssh_port" cty:"ssh_port" hcl:"ssh_port"`
-	WinRMPort                      *int              `mapstructure:"winrm_port" cty:"winrm_port" hcl:"winrm_port"`
-	SourceUrl                      *string           `mapstructure:"source_url" cty:"source_url" hcl:"source_url"`
-	SourceAWSAccessKeyId           *string           `mapstructure:"source_aws_access_key_id" cty:"source_aws_access_key_id" hcl:"source_aws_access_key_id"`
-	SourceAWSSecretAccessKey       *string           `mapstructure:"source_aws_secret_access_key" cty:"source_aws_secret_access_key" hcl:"source_aws_secret_access_key"`
+	PackerBuildName          *string             `mapstructure:"packer_build_name" cty:"packer_build_name" hcl:"packer_build_name"`
+	PackerBuilderType        *string             `mapstructure:"packer_builder_type" cty:"packer_builder_type" hcl:"packer_builder_type"`
+	PackerCoreVersion        *string             `mapstructure:"packer_core_version" cty:"packer_core_version" hcl:"packer_core_version"`
+	PackerDebug              *bool               `mapstructure:"packer_debug" cty:"packer_debug" hcl:"packer_debug"`
+	PackerForce              *bool               `mapstructure:"packer_force" cty:"packer_force" hcl:"packer_force"`
+	PackerOnError            *string             `mapstructure:"packer_on_error" cty:"packer_on_error" hcl:"packer_on_error"`
+	PackerUserVars           map[string]string   `mapstructure:"packer_user_variables" cty:"packer_user_variables" hcl:"packer_user_variables"`
+	PackerSensitiveVars      []string            `mapstructure:"packer_sensitive_variables" cty:"packer_sensitive_variables" hcl:"packer_sensitive_variables"`
+	KubernetesName           *string             `mapstructure:"kubernetes_name" cty:"kubernetes_name" hcl:"kubernetes_name"`
+	KubernetesNamespace      *string             `mapstructure:"kubernetes_namespace" cty:"kubernetes_namespace" hcl:"kubernetes_namespace"`
+	KubernetesNodeAutoscaler *k8s.NodeAutoscaler `mapstructure:"kubernetes_node_autoscaler" cty:"kubernetes_node_autoscaler" hcl:"kubernetes_node_autoscaler"`
+	KubevirtOsPreference     *string             `mapstructure:"kubevirt_os_preference" cty:"kubevirt_os_preference" hcl:"kubevirt_os_preference"`
+	VirtualMachineDiskSpace  *string             `mapstructure:"vm_disk_space" cty:"vm_disk_space" hcl:"vm_disk_space"`
+	SSHPort                  *int                `mapstructure:"ssh_port" cty:"ssh_port" hcl:"ssh_port"`
+	WinRMPort                *int                `mapstructure:"winrm_port" cty:"winrm_port" hcl:"winrm_port"`
+	SourceUrl                *string             `mapstructure:"source_url" cty:"source_url" hcl:"source_url"`
+	SourceAWSAccessKeyId     *string             `mapstructure:"source_aws_access_key_id" cty:"source_aws_access_key_id" hcl:"source_aws_access_key_id"`
+	SourceAWSSecretAccessKey *string             `mapstructure:"source_aws_secret_access_key" cty:"source_aws_secret_access_key" hcl:"source_aws_secret_access_key"`
 }
 
 // FlatMapstructure returns a new FlatConfig.
@@ -42,24 +44,24 @@ func (*Config) FlatMapstructure() interface{ HCL2Spec() map[string]hcldec.Spec }
 // The decoded values from this spec will then be applied to a FlatConfig.
 func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 	s := map[string]hcldec.Spec{
-		"packer_build_name":                  &hcldec.AttrSpec{Name: "packer_build_name", Type: cty.String, Required: false},
-		"packer_builder_type":                &hcldec.AttrSpec{Name: "packer_builder_type", Type: cty.String, Required: false},
-		"packer_core_version":                &hcldec.AttrSpec{Name: "packer_core_version", Type: cty.String, Required: false},
-		"packer_debug":                       &hcldec.AttrSpec{Name: "packer_debug", Type: cty.Bool, Required: false},
-		"packer_force":                       &hcldec.AttrSpec{Name: "packer_force", Type: cty.Bool, Required: false},
-		"packer_on_error":                    &hcldec.AttrSpec{Name: "packer_on_error", Type: cty.String, Required: false},
-		"packer_user_variables":              &hcldec.AttrSpec{Name: "packer_user_variables", Type: cty.Map(cty.String), Required: false},
-		"packer_sensitive_variables":         &hcldec.AttrSpec{Name: "packer_sensitive_variables", Type: cty.List(cty.String), Required: false},
-		"kubernetes_name":                    &hcldec.AttrSpec{Name: "kubernetes_name", Type: cty.String, Required: false},
-		"kubernetes_namespace":               &hcldec.AttrSpec{Name: "kubernetes_namespace", Type: cty.String, Required: false},
-		"kubernetes_use_karpenter_node_pool": &hcldec.AttrSpec{Name: "kubernetes_use_karpenter_node_pool", Type: cty.Bool, Required: false},
-		"kubevirt_os_preference":             &hcldec.AttrSpec{Name: "kubevirt_os_preference", Type: cty.String, Required: false},
-		"vm_disk_space":                      &hcldec.AttrSpec{Name: "vm_disk_space", Type: cty.String, Required: false},
-		"ssh_port":                           &hcldec.AttrSpec{Name: "ssh_port", Type: cty.Number, Required: false},
-		"winrm_port":                         &hcldec.AttrSpec{Name: "winrm_port", Type: cty.Number, Required: false},
-		"source_url":                         &hcldec.AttrSpec{Name: "source_url", Type: cty.String, Required: false},
-		"source_aws_access_key_id":           &hcldec.AttrSpec{Name: "source_aws_access_key_id", Type: cty.String, Required: false},
-		"source_aws_secret_access_key":       &hcldec.AttrSpec{Name: "source_aws_secret_access_key", Type: cty.String, Required: false},
+		"packer_build_name":            &hcldec.AttrSpec{Name: "packer_build_name", Type: cty.String, Required: false},
+		"packer_builder_type":          &hcldec.AttrSpec{Name: "packer_builder_type", Type: cty.String, Required: false},
+		"packer_core_version":          &hcldec.AttrSpec{Name: "packer_core_version", Type: cty.String, Required: false},
+		"packer_debug":                 &hcldec.AttrSpec{Name: "packer_debug", Type: cty.Bool, Required: false},
+		"packer_force":                 &hcldec.AttrSpec{Name: "packer_force", Type: cty.Bool, Required: false},
+		"packer_on_error":              &hcldec.AttrSpec{Name: "packer_on_error", Type: cty.String, Required: false},
+		"packer_user_variables":        &hcldec.AttrSpec{Name: "packer_user_variables", Type: cty.Map(cty.String), Required: false},
+		"packer_sensitive_variables":   &hcldec.AttrSpec{Name: "packer_sensitive_variables", Type: cty.List(cty.String), Required: false},
+		"kubernetes_name":              &hcldec.AttrSpec{Name: "kubernetes_name", Type: cty.String, Required: false},
+		"kubernetes_namespace":         &hcldec.AttrSpec{Name: "kubernetes_namespace", Type: cty.String, Required: false},
+		"kubernetes_node_autoscaler":   &hcldec.AttrSpec{Name: "kubernetes_node_autoscaler", Type: cty.String, Required: false},
+		"kubevirt_os_preference":       &hcldec.AttrSpec{Name: "kubevirt_os_preference", Type: cty.String, Required: false},
+		"vm_disk_space":                &hcldec.AttrSpec{Name: "vm_disk_space", Type: cty.String, Required: false},
+		"ssh_port":                     &hcldec.AttrSpec{Name: "ssh_port", Type: cty.Number, Required: false},
+		"winrm_port":                   &hcldec.AttrSpec{Name: "winrm_port", Type: cty.Number, Required: false},
+		"source_url":                   &hcldec.AttrSpec{Name: "source_url", Type: cty.String, Required: false},
+		"source_aws_access_key_id":     &hcldec.AttrSpec{Name: "source_aws_access_key_id", Type: cty.String, Required: false},
+		"source_aws_secret_access_key": &hcldec.AttrSpec{Name: "source_aws_secret_access_key", Type: cty.String, Required: false},
 	}
 	return s
 }

@@ -18,6 +18,13 @@ import (
 	"time"
 )
 
+type NodeAutoscaler string
+
+const (
+	DefaultNodeAutoscaler   NodeAutoscaler = "default"
+	KarpenterNodeAutoscaler                = "karpenter"
+)
+
 const (
 	ImageBuilderTaintKey   = "pelo.tech/uki-labs"
 	ImageBuilderTaintValue = "builder"

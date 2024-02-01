@@ -19,10 +19,10 @@ import (
 )
 
 type StepDeployVM struct {
-	KubeClient           client.Client
-	VirtClient           kubecli.KubevirtClient
-	VmOptions            generator.VirtualMachineOptions
-	UseKarpenterNodePool bool
+	KubeClient               client.Client
+	VirtClient               kubecli.KubevirtClient
+	VmOptions                generator.VirtualMachineOptions
+	KubernetesNodeAutoscaler k8s.NodeAutoscaler
 }
 
 func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -137,7 +137,8 @@ func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
 		return err
 	}
 
-	if s.UseKarpenterNodePool {
+	switch s.KubernetesNodeAutoscaler {
+	case k8s.KarpenterNodeAutoscaler:
 		nodePool := generator.GenerateNodePool()
 		err = s.KubeClient.Create(context.TODO(), nodePool)
 		if err != nil && !errors.IsAlreadyExists(err) {
@@ -150,6 +151,8 @@ func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
 		if err != nil && !errors.IsAlreadyExists(err) {
 			return err
 		}
+	case k8s.DefaultNodeAutoscaler:
+		// Do nothing
 	}
 
 	return nil

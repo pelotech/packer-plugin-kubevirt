@@ -32,9 +32,9 @@ const (
 type Config struct {
 	common.PackerConfig `mapstructure:",squash"`
 
-	KubernetesName                 string `mapstructure:"kubernetes_name"`
-	KubernetesNamespace            string `mapstructure:"kubernetes_namespace"`
-	KubernetesUseKarpenterNodePool bool   `mapstructure:"kubernetes_use_karpenter_node_pool"`
+	KubernetesName           string             `mapstructure:"kubernetes_name"`
+	KubernetesNamespace      string             `mapstructure:"kubernetes_namespace"`
+	KubernetesNodeAutoscaler k8s.NodeAutoscaler `mapstructure:"kubernetes_node_autoscaler"`
 
 	KubevirtOsPreference string `mapstructure:"kubevirt_os_preference"`
 
@@ -68,10 +68,10 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 		return nil, nil, err
 	}
 
-	// 0. Align logger log level on user bool input 'b.config.PackerDebug'	INFO/DEBUG
-	// 1. Validate configuration fields
-	// 2. Validate credentials (e.g. k8s clients)
-	// 3. Any computed values (if needed)
+	// 1. Align logger log level on user bool input 'b.config.PackerDebug'	INFO/DEBUG
+	// 2. Validate configuration fields
+	// 3. Validate credentials (e.g. k8s clients)
+	// 4. Any computed values (if needed)
 
 	b.virtClient, err = k8s.GetKubevirtClient()
 	if err != nil {
@@ -103,9 +103,9 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
-			VirtClient:           b.virtClient,
-			KubeClient:           b.kubeClient,
-			UseKarpenterNodePool: b.config.KubernetesUseKarpenterNodePool,
+			VirtClient:               b.virtClient,
+			KubeClient:               b.kubeClient,
+			KubernetesNodeAutoscaler: b.config.KubernetesNodeAutoscaler,
 			VmOptions: generator.VirtualMachineOptions{
 				Name:         b.config.KubernetesName,
 				Namespace:    b.config.KubernetesNamespace,

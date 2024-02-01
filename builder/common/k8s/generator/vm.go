@@ -18,7 +18,8 @@ import (
 var scripts embed.FS
 
 const (
-	VirtioDriversURL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
+	defaultNetworkName = "default"
+	virtioDriversURL   = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
 )
 
 type VirtualMachineOptions struct {
@@ -93,15 +94,11 @@ func buildProbeExecCommand(family OsFamily) []string {
 	switch family {
 	case Linux:
 		command = []string{
-			//"/bin/sh",
-			//"-c",
 			"cloud-init",
 			"status",
 		}
 	case Windows:
 		command = []string{
-			"cmd",
-			"/c",
 			"findstr",
 			"IMAGE_STATE_COMPLETE",
 			"%SystemRoot%\\Setup\\State\\state.ini",
@@ -256,9 +253,25 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 						},
 						Devices: kubevirtv1.Devices{
 							Disks: disks,
+							Interfaces: []kubevirtv1.Interface{
+								{
+									Name: defaultNetworkName,
+									InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
+										Masquerade: &kubevirtv1.InterfaceMasquerade{},
+									},
+								},
+							},
 						},
 					},
 					Volumes: volumes,
+					Networks: []kubevirtv1.Network{
+						{
+							Name: defaultNetworkName,
+							NetworkSource: kubevirtv1.NetworkSource{
+								Pod: &kubevirtv1.PodNetwork{},
+							},
+						},
+					},
 				},
 			},
 			DataVolumeTemplates: dataVolumeTemplates,
@@ -306,7 +319,7 @@ func generateDataVolumeTemplates(family OsFamily, dvSource cdiv1beta1.DataVolume
 				},
 				Source: &cdiv1beta1.DataVolumeSource{
 					HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
-						URL: VirtioDriversURL,
+						URL: virtioDriversURL,
 					},
 				},
 			},

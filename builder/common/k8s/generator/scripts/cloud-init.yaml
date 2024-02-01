@@ -1,24 +1,23 @@
 #cloud-config
 
-system_info:
-  default_user:
-    name: packer
-    groups: sudo
-    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
-    shell: /bin/bash
-
-password: packer
 ssh_pwauth: True
 chpasswd: { expire: False }
 
+system_info:
+  default_user:
+    name: packer
+    plain_text_passwd: packer
+    home: /home/packer
+    shell: /bin/bash
+    lock_passwd: false
+    gecos: Packer
+    groups: [adm, cdrom, dip, lxd, sudo]
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+
 package_update: true
-package_upgrade: false
+package_upgrade: true
 packages:
   - qemu-guest-agent
 
 runcmd:
-  - ["sudo", "systemctl", "enable", "--now", "qemu-guest-agent"]
-
-power_state:
-  mode: reboot
-  message: Rebooting after package installation.
+  - [ "systemctl", "enable", "--now", "qemu-guest-agent" ]
