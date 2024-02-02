@@ -31,6 +31,7 @@ const (
 
 type Config struct {
 	common.PackerConfig `mapstructure:",squash"`
+	Comm                communicator.Config `mapstructure:",squash"`
 
 	KubernetesName           string             `mapstructure:"kubernetes_name"`
 	KubernetesNamespace      string             `mapstructure:"kubernetes_namespace"`
@@ -39,9 +40,6 @@ type Config struct {
 	KubevirtOsPreference string `mapstructure:"kubevirt_os_preference"`
 
 	VirtualMachineDiskSpace string `mapstructure:"vm_disk_space"`
-
-	SSHPort   int `mapstructure:"ssh_port"`
-	WinRMPort int `mapstructure:"winrm_port"`
 
 	SourceUrl                string `mapstructure:"source_url"`
 	SourceAWSAccessKeyId     string `mapstructure:"source_aws_access_key_id"`
@@ -72,6 +70,14 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	// 2. Validate configuration fields
 	// 3. Validate credentials (e.g. k8s clients)
 	// 4. Any computed values (if needed)
+	if utils.IsReservedPort(b.config.Comm.SSHPort) || utils.IsReservedPort(b.config.Comm.WinRMPort) {
+		return nil, nil, fmt.Errorf("the local port for communicating with the remote machine is reserved - please use a port above 1024")
+	}
+
+	if b.config.Comm.Type == "" {
+		b.config.Comm.Type = "ssh"
+		warnings = append(warnings, "no communication method was specified, so SSH will be used by default to connect to the machine.")
+	}
 
 	b.virtClient, err = k8s.GetKubevirtClient()
 	if err != nil {
@@ -96,7 +102,7 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 		return nil, nil, err
 	}
 
-	return []string{}, nil, nil
+	return generatedVars, warnings, nil
 }
 
 func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
@@ -121,11 +127,12 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		&stepDef.StepPortForwardVM{
 			VirtClient: b.virtClient,
 			PortMappings: []string{
-				fmt.Sprintf("%d:%d", utils.GetOrDefault(b.config.SSHPort, buildercommon.DefaultSSHPort), buildercommon.DefaultSSHPort),
-				fmt.Sprintf("%d:%d", utils.GetOrDefault(b.config.WinRMPort, buildercommon.DefaultWinRMPort), buildercommon.DefaultWinRMPort),
+				fmt.Sprintf("%d:%d", utils.GetOrDefault(b.config.Comm.SSHPort, buildercommon.DefaultSSHPort), buildercommon.DefaultSSHPort),
+				fmt.Sprintf("%d:%d", utils.GetOrDefault(b.config.Comm.WinRMPort, buildercommon.DefaultWinRMPort), buildercommon.DefaultWinRMPort),
 			},
 		},
 		&communicator.StepConnect{
+			Config: &b.config.Comm,
 			Host: func(bag multistep.StateBag) (string, error) {
 				return buildercommon.VirtualMachineHost, nil
 			},
@@ -139,7 +146,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 				}, nil
 			},
 			SSHPort: func(bag multistep.StateBag) (int, error) {
-				return utils.GetOrDefault(b.config.SSHPort, buildercommon.DefaultSSHPort), nil
+				return utils.GetOrDefault(b.config.Comm.SSHPort, buildercommon.DefaultSSHPort), nil
 			},
 			WinRMConfig: func(bag multistep.StateBag) (*communicator.WinRMConfig, error) {
 				return &communicator.WinRMConfig{
@@ -148,7 +155,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 				}, nil
 			},
 			WinRMPort: func(bag multistep.StateBag) (int, error) {
-				return utils.GetOrDefault(b.config.WinRMPort, buildercommon.DefaultWinRMPort), nil
+				return utils.GetOrDefault(b.config.Comm.WinRMPort, buildercommon.DefaultWinRMPort), nil
 			},
 		},
 		&commonsteps.StepProvision{},

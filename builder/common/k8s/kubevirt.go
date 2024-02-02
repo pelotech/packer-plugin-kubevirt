@@ -3,19 +3,11 @@ package k8s
 import (
 	"fmt"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 	"os"
 )
-
-var VirtualMachineGroupVersionResource = schema.GroupVersionResource{
-	Group:    kubevirtv1.VirtualMachineGroupVersionKind.Group,
-	Version:  kubevirtv1.VirtualMachineGroupVersionKind.Version,
-	Resource: "VirtualMachines",
-}
 
 func GetKubevirtClient() (kubecli.KubevirtClient, error) {
 	var client kubecli.KubevirtClient

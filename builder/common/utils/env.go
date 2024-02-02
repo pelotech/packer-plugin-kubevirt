@@ -18,3 +18,7 @@ func GetOrDefault(value, defaultValue int) int {
 	}
 	return value
 }
+
+func IsReservedPort(value int) bool {
+	return value > 0 && value < 1024
+}

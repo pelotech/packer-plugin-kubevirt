@@ -45,7 +45,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 		return multistep.ActionHalt
 	}
 
-	err = s.waitForExportReady(vm.Namespace, vm.Name)
+	err = s.waitForExportReady(export)
 	if err != nil {
 		err := fmt.Errorf("failed to wait for Virtual Machine Export to be in a 'Ready' state %s/%s: %s", vm.Namespace, vm.Name, err)
 		appContext.Put(common.PackerError, err)
@@ -74,27 +74,27 @@ func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine, token string)
 	return result, nil
 }
 
-func (s *StepExportVM) waitForExportReady(ns, name string) error {
+func (s *StepExportVM) waitForExportReady(export *exportv1.VirtualMachineExport) error {
 	watchFunc := func(event watch.Event) (bool, error) {
-		export, err := event.Object.(*exportv1.VirtualMachineExport)
+		updatedExport, err := event.Object.(*exportv1.VirtualMachineExport)
 		if !err {
 			return false, fmt.Errorf("unexpected type for %v", event.Object)
 		}
 
-		switch export.Status.Phase {
+		switch updatedExport.Status.Phase {
 		case exportv1.Ready:
-			log.Printf("Virtual Machine Export '%s' is now ready", name)
+			log.Printf("Virtual Machine Export '%s' is now ready", updatedExport.Name)
 			return true, nil
 		case exportv1.Skipped, exportv1.Terminated:
-			return false, fmt.Errorf("virtual Machine Export '%s' failed", name)
+			return false, fmt.Errorf("virtual Machine Export '%s' failed", updatedExport.Name)
 		}
 
 		return false, nil
 	}
 
-	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), k8s.VirtualMachineGroupVersionResource, ns, name, 5*time.Minute, watchFunc)
+	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), export.Namespace, "virtualmachineexports", export.Name, export.ResourceVersion, 5*time.Minute, watchFunc)
 	if err != nil {
-		return fmt.Errorf("failed to wait for Virtual Machine Export %s/%s to be ready: %s", ns, name, err)
+		return fmt.Errorf("failed to wait for Virtual Machine Export %s/%s to be ready: %s", export.Namespace, export.Name, err)
 	}
 
 	return nil

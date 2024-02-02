@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -76,12 +75,12 @@ func runPortForward(client kubecli.KubevirtClient, podName, namespace string, po
 
 type HandleEventFunc func(context.Context, watch.Event) (bool, error)
 
-func WaitForResource(client *rest.RESTClient, gvr schema.GroupVersionResource, namespace, name string, timeout time.Duration, handleEvent watchtools.ConditionFunc) (*watch.Event, error) {
+func WaitForResource(client *rest.RESTClient, namespace, resource, name, version string, timeout time.Duration, handleEvent watchtools.ConditionFunc) (*watch.Event, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
 	defer cancel()
 
-	listWatch := cache.NewListWatchFromClient(client, gvr.Resource, namespace, fields.OneTermEqualSelector("metadata.name", name))
-	event, err := watchtools.Until(ctx, gvr.Version, listWatch, handleEvent)
+	listWatch := cache.NewListWatchFromClient(client, resource, namespace, fields.OneTermEqualSelector("metadata.name", name))
+	event, err := watchtools.Until(ctx, version, listWatch, handleEvent)
 	if err != nil {
 		return nil, err
 	}

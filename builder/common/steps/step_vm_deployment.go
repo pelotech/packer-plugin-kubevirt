@@ -8,7 +8,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/rest"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
@@ -93,7 +92,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		}
 	}
 
-	err = waitForVirtualMachine(s.VirtClient.RestClient(), ns, name)
+	err = s.waitForVirtualMachine(vm)
 	if err != nil {
 		err = fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
@@ -107,7 +106,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	return multistep.ActionContinue
 }
 
-func waitForVirtualMachine(client *rest.RESTClient, ns, name string) error {
+func (s *StepDeployVM) waitForVirtualMachine(vm *kubevirtv1.VirtualMachine) error {
 	watchFunc := func(event watch.Event) (bool, error) {
 		vm, ok := event.Object.(*kubevirtv1.VirtualMachine)
 		if !ok {
@@ -121,10 +120,9 @@ func waitForVirtualMachine(client *rest.RESTClient, ns, name string) error {
 		}
 		return false, nil
 	}
-
-	_, err := k8s.WaitForResource(client, k8s.VirtualMachineGroupVersionResource, ns, name, 8*time.Minute, watchFunc)
+	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), vm.Namespace, "virtualmachines", vm.Name, vm.ResourceVersion, 7*time.Minute, watchFunc)
 	if err != nil {
-		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", ns, name, err)
+		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", vm.Namespace, vm.Name, err)
 	}
 
 	return nil
@@ -146,8 +144,8 @@ func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
 		}
 
 		ttlInSeconds := 120
-		pod := generator.GenerateInitPod(ns, name, ttlInSeconds)
-		_, err = s.VirtClient.CoreV1().Pods(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
+		pod := generator.GenerateInitJob(ns, name, ttlInSeconds)
+		_, err = s.VirtClient.BatchV1().Jobs(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
 		if err != nil && !errors.IsAlreadyExists(err) {
 			return err
 		}
