@@ -120,7 +120,7 @@ func (s *StepDeployVM) waitForVirtualMachine(vm *kubevirtv1.VirtualMachine) erro
 		}
 		return false, nil
 	}
-	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), vm.Namespace, "virtualmachines", vm.Name, vm.ResourceVersion, 7*time.Minute, watchFunc)
+	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, 7*time.Minute, watchFunc)
 	if err != nil {
 		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", vm.Namespace, vm.Name, err)
 	}
@@ -156,12 +156,15 @@ func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
 	return nil
 }
 
+// Cleanup doesn't delete the node pool and namespace, it may contain other resources that are not created by this build context
 func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 	appContext := &common.AppContext{State: state}
-	name := appContext.GetVirtualMachine().Name
-	namespace := appContext.GetVirtualMachine().Namespace
-	deletionPropagation := metav1.DeletePropagationForeground
-	// NOTE: We don't delete the node pool and namespace here because it may contain other resources that are not created by this build context.
-	_ = s.VirtClient.VirtualMachine(namespace).Delete(context.TODO(), name, &metav1.DeleteOptions{PropagationPolicy: &deletionPropagation})
-	appContext.GetPackerUi().Message(fmt.Sprintf("clean up - Virtual Machine %s/%s has been deleted", namespace, name))
+	vm := appContext.GetVirtualMachine()
+	if appContext.GetVirtualMachine() == nil {
+		return
+	}
+
+	propagationPolicy := metav1.DeletePropagationForeground
+	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, &metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
+	appContext.GetPackerUi().Message(fmt.Sprintf("clean up - Virtual Machine %s/%s has been deleted", vm.Namespace, vm.Name))
 }

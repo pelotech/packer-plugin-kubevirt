@@ -9,11 +9,12 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	exportv1 "kubevirt.io/api/export/v1alpha1"
 	"testing"
 	"time"
 )
 
-func TestWaitForResource(t *testing.T) {
+func TestWaitForVirtualMachine(t *testing.T) {
 	ns := "packer"
 	resource := "virtualmachines"
 	name := "image-builder"
@@ -37,6 +38,37 @@ func TestWaitForResource(t *testing.T) {
 
 	_, err := WaitForResource(client.RestClient(), vm.Namespace, resource, vm.Name, "51162567", 10*time.Minute, conditionFunc)
 	assert.NoError(t, err)
+}
+
+func TestWaitForVirtualMachineExport(t *testing.T) {
+	ns := "packer"
+	//resource := "virtualmachineexports"
+	name := "base-ubuntu-2204"
+	client, _ := GetKubevirtClient()
+
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Minute)
+	defer cancel()
+
+	watcher, _ := client.GeneratedKubeVirtClient().ExportV1alpha1().VirtualMachineExports(ns).Watch(ctx, v1.ListOptions{
+		FieldSelector: labels.SelectorFromSet(map[string]string{
+			"metadata.name": name,
+		}).String(),
+	})
+	defer watcher.Stop()
+
+	for {
+		select {
+		case event, _ := <-watcher.ResultChan():
+			updatedExport, _ := event.Object.(*exportv1.VirtualMachineExport)
+			if updatedExport.Status.Phase == exportv1.Ready {
+				println("congrats!")
+				return
+			}
+
+		case <-ctx.Done():
+			// that's it
+		}
+	}
 }
 
 func TestRunAsyncPortForward(t *testing.T) {

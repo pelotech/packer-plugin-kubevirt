@@ -9,6 +9,10 @@ import (
 	"os"
 )
 
+const (
+	VirtualMachineResourceName = "virtualmachines"
+)
+
 func GetKubevirtClient() (kubecli.KubevirtClient, error) {
 	var client kubecli.KubevirtClient
 	var err error

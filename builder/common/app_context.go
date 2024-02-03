@@ -30,7 +30,11 @@ type AppContext struct {
 }
 
 func (s *AppContext) GetPackerError() error {
-	return s.get(PackerError).(error)
+	err := s.get(PackerError)
+	if err != nil {
+		return err.(error)
+	}
+	return nil
 }
 
 func (s *AppContext) GetPackerUi() packersdk.Ui {
@@ -38,11 +42,19 @@ func (s *AppContext) GetPackerUi() packersdk.Ui {
 }
 
 func (s *AppContext) GetVirtualMachine() *kubevirtv1.VirtualMachine {
-	return s.get(VirtualMachine).(*kubevirtv1.VirtualMachine)
+	vm := s.get(VirtualMachine)
+	if vm != nil {
+		return vm.(*kubevirtv1.VirtualMachine)
+	}
+	return nil
 }
 
 func (s *AppContext) GetVirtualMachineExport() *exportv1.VirtualMachineExport {
-	return s.get(VirtualMachineExport).(*exportv1.VirtualMachineExport)
+	export := s.get(VirtualMachineExport)
+	if export != nil {
+		return export.(*exportv1.VirtualMachineExport)
+	}
+	return nil
 }
 
 func (s *AppContext) GetVirtualMachineExportToken() string {

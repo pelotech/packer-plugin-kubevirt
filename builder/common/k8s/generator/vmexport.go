@@ -17,7 +17,7 @@ func GenerateTokenSecret(export *exportv1.VirtualMachineExport, token string) *c
 			Name:      buildTokenSecretName(export.Spec.Source.Name),
 			Namespace: export.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(export.Kind)),
+				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind("VirtualMachineExport")),
 			},
 		},
 		Type: corev1.SecretTypeOpaque,
