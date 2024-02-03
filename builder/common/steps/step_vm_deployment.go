@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
+	"github.com/hashicorp/packer-plugin-sdk/packer"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -92,7 +93,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		}
 	}
 
-	err = s.waitForVirtualMachine(vm)
+	err = s.waitForVirtualMachine(ui, vm)
 	if err != nil {
 		err = fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
@@ -106,14 +107,17 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	return multistep.ActionContinue
 }
 
-func (s *StepDeployVM) waitForVirtualMachine(vm *kubevirtv1.VirtualMachine) error {
+func (s *StepDeployVM) waitForVirtualMachine(ui packer.Ui, vm *kubevirtv1.VirtualMachine) error {
 	watchFunc := func(event watch.Event) (bool, error) {
 		vm, ok := event.Object.(*kubevirtv1.VirtualMachine)
 		if !ok {
 			return false, fmt.Errorf("unexpected type for %v", event.Object)
 		}
 
-		for _, condition := range vm.Status.Conditions {
+		for index, condition := range vm.Status.Conditions {
+			if index == 0 {
+				ui.Message(fmt.Sprintf("condition '%s' changed to '%s'", condition.Type, condition.Status))
+			}
 			if condition.Type == kubevirtv1.VirtualMachineReady && condition.Status == corev1.ConditionTrue {
 				return true, nil
 			}
@@ -166,5 +170,5 @@ func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 
 	propagationPolicy := metav1.DeletePropagationForeground
 	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, &metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
-	appContext.GetPackerUi().Message(fmt.Sprintf("clean up - Virtual Machine %s/%s has been deleted", vm.Namespace, vm.Name))
+	appContext.GetPackerUi().Message(fmt.Sprintf("Virtual Machine %s/%s has been deleted", vm.Namespace, vm.Name))
 }

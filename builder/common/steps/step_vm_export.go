@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
+	"github.com/hashicorp/packer-plugin-sdk/packer"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -63,7 +64,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 	appContext.Put(common.VirtualMachineExportToken, exportToken)
 
-	err = s.waitForExportReady(export)
+	err = s.waitForExportReady(ui, export)
 	if err != nil {
 		err := fmt.Errorf("failed to wait for Virtual Machine Export to be in a 'Ready' state %s/%s: %s", vm.Namespace, vm.Name, err)
 		appContext.Put(common.PackerError, err)
@@ -87,7 +88,7 @@ func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine) (*exportv1.Vi
 	return export, nil
 }
 
-func (s *StepExportVM) waitForExportReady(export *exportv1.VirtualMachineExport) error {
+func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.VirtualMachineExport) error {
 	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Minute)
 	defer cancel()
 
@@ -102,6 +103,7 @@ func (s *StepExportVM) waitForExportReady(export *exportv1.VirtualMachineExport)
 		select {
 		case event, _ := <-watcher.ResultChan():
 			updatedExport, _ := event.Object.(*exportv1.VirtualMachineExport)
+			ui.Message(fmt.Sprintf("phase '%s'", updatedExport.Status.Phase))
 			if updatedExport.Status.Phase == exportv1.Ready {
 				return nil
 			}
@@ -131,5 +133,5 @@ func (s *StepExportVM) Cleanup(state multistep.StateBag) {
 
 	propagationPolicy := metav1.DeletePropagationForeground
 	_ = s.VirtClient.VirtualMachineExport(export.Namespace).Delete(context.TODO(), export.Name, metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
-	appContext.GetPackerUi().Message(fmt.Sprintf("clean up - Virtual Machine Export %s/%s has been deleted", export.Namespace, export.Name))
+	appContext.GetPackerUi().Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", export.Namespace, export.Name))
 }
