@@ -89,7 +89,7 @@ func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine) (*exportv1.Vi
 }
 
 func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.VirtualMachineExport) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.TODO(), 4*time.Minute)
 	defer cancel()
 
 	watcher, _ := s.VirtClient.VirtualMachineExport(export.Namespace).Watch(ctx, metav1.ListOptions{
@@ -109,7 +109,7 @@ func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.Virtual
 			}
 
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for virtual machine export to be ready")
+			return fmt.Errorf("timeout waiting for Virtual Machine Export to be ready")
 		}
 	}
 }
@@ -124,14 +124,6 @@ func (s *StepExportVM) createTokenSecret(export *exportv1.VirtualMachineExport, 
 	return secret, nil
 }
 
-func (s *StepExportVM) Cleanup(state multistep.StateBag) {
-	appContext := &common.AppContext{State: state}
-	export := appContext.GetVirtualMachineExport()
-	if export == nil {
-		return
-	}
-
-	propagationPolicy := metav1.DeletePropagationForeground
-	_ = s.VirtClient.VirtualMachineExport(export.Namespace).Delete(context.TODO(), export.Name, metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
-	appContext.GetPackerUi().Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", export.Namespace, export.Name))
+func (s *StepExportVM) Cleanup(_ multistep.StateBag) {
+	// Cleaning up 'Virtual Machine Export' during the build would prevent any post-processor to download the export
 }

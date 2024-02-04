@@ -11,6 +11,7 @@ import (
 
 const (
 	VirtualMachineResourceName = "virtualmachines"
+	VirtualMachineExportKind   = "VirtualMachineExport"
 )
 
 func GetKubevirtClient() (kubecli.KubevirtClient, error) {

@@ -3,8 +3,14 @@
 
 package common
 
-// Artifact packersdk.Artifact implementation
-type Artifact struct {
+const (
+	NamespaceArtifactKey                 = "namespace"
+	VirtualMachineExportNameArtifactKey  = "vmexport"
+	VirtualMachineExportTokenArtifactKey = "token"
+)
+
+// KubevirtArtifact packersdk.KubevirtArtifact implementation
+type KubevirtArtifact struct {
 	// BuilderId is the unique ID for the builder that created this VM Image
 	BuilderIdValue string
 	// StateData should store data such as GeneratedData
@@ -12,26 +18,26 @@ type Artifact struct {
 	StateData map[string]interface{}
 }
 
-func (a *Artifact) BuilderId() string {
+func (a *KubevirtArtifact) BuilderId() string {
 	return a.BuilderIdValue
 }
 
-func (a *Artifact) Files() []string {
+func (a *KubevirtArtifact) Files() []string {
 	return []string{}
 }
 
-func (*Artifact) Id() string {
+func (*KubevirtArtifact) Id() string {
 	return ""
 }
 
-func (a *Artifact) String() string {
+func (a *KubevirtArtifact) String() string {
 	return ""
 }
 
-func (a *Artifact) State(name string) interface{} {
+func (a *KubevirtArtifact) State(name string) interface{} {
 	return a.StateData[name]
 }
 
-func (a *Artifact) Destroy() error {
+func (a *KubevirtArtifact) Destroy() error {
 	return nil
 }

@@ -1,13 +1,61 @@
-variable "aws_access_key_id" {
+variable "kubernetes_namespace" {
+  description = "Kubernetes namespace used to provision and export virtual machines"
+  type        = string
+}
+
+variable "kubernetes_node_autoscaler" {
+  description = "Kubernetes node autoscaler used to schedule node hosting provisioning operations"
+  type        = string
+
+  validation {
+    condition     = contains(["default", "karpenter"], var.kubernetes_node_autoscaler)
+    error_message = "The 'kubernetes_node_autoscaler' value must be one of the following: default, karpenter."
+  }
+}
+
+variable "source_aws_access_key_id" {
   description = "AWS Access Key ID for S3 bucket containing VM images (Empty will skip adding credentials)"
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "aws_secret_access_key" {
+variable "source_aws_secret_access_key" {
   description = "AWS Secret Access Key for S3 bucket containing VM images (Empty will skip adding credentials)"
   type        = string
   sensitive   = true
   default     = ""
+}
+
+variable "destination_aws_s3_bucket" {
+  description = "AWS S3 Bucket where exported VM images are stored"
+  type        = string
+}
+
+variable "destination_aws_s3_key_prefix" {
+  description = "AWS S3 Key prefix for all the exported VM images"
+  type        = string
+  default     = "exports/"
+
+  validation {
+    condition     = length(var.destination_aws_s3_key_prefix) == 0 || (length(var.destination_aws_s3_key_prefix) > 0 && length(regexall("[a-zA-Z0-9]+/", var.destination_aws_s3_key_prefix)) > 0)
+    error_message = "The 'destination_aws_s3_key_prefix' value must end with a trailing slash."
+  }
+}
+
+variable "destination_aws_access_key_id" {
+  description = "AWS Access Key ID for S3 bucket containing VM images (Empty will skip adding credentials)"
+  type        = string
+  sensitive   = true
+}
+
+variable "destination_aws_secret_access_key" {
+  description = "AWS Secret Access Key for S3 bucket containing VM images (Empty will skip adding credentials)"
+  type        = string
+  sensitive   = true
+}
+
+variable "destination_aws_region" {
+  description = "AWS region used to initialize the AWS CLI uploading the exported VM image"
+  type        = string
 }

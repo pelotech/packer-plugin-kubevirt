@@ -6,10 +6,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1alpha1"
+	"packer-plugin-kubevirt/builder/common/k8s"
 )
 
-const tokenSecretSuffix = "export-token"
-const tokenSecretKey = "token"
+const (
+	tokenSecretSuffix = "export-token"
+	tokenSecretKey    = "token"
+)
 
 func GenerateTokenSecret(export *exportv1.VirtualMachineExport, token string) *corev1.Secret {
 	return &corev1.Secret{
@@ -17,7 +20,7 @@ func GenerateTokenSecret(export *exportv1.VirtualMachineExport, token string) *c
 			Name:      buildTokenSecretName(export.Spec.Source.Name),
 			Namespace: export.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind("VirtualMachineExport")),
+				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),
 			},
 		},
 		Type: corev1.SecretTypeOpaque,

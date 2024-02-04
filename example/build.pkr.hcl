@@ -7,22 +7,51 @@ packer {
   }
 }
 
-source "kubevirt-iso" "ubuntu2204" {
-  kubernetes_name              = "base-ubuntu-2204"
-  kubernetes_namespace         = "packer"
-  kubernetes_node_autoscaler   = "karpenter"
-  kubevirt_os_preference       = "ubuntu"
-  vm_disk_space                = "50Gi"
-  ssh_port                     = 2222
-  winrm_port                   = 5389
-  source_url = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
-  #  source_url                         = "https://releases.ubuntu.com/22.04.3/ubuntu-22.04.3-desktop-amd64.iso"
-  source_aws_access_key_id     = var.aws_access_key_id
-  source_aws_secret_access_key = var.aws_secret_access_key
+locals {
+  images = {
+    linux = [
+      {
+        name            = "base-ubuntu-2204"
+        os_distribution = "ubuntu"
+        url             = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+        disk_space      = "50Gi"
+      }
+    ]
+  }
+}
+
+source "kubevirt-iso" "linux" {
+  kubernetes_name              = local.images.linux.0.name
+  kubernetes_namespace         = var.kubernetes_namespace
+  kubernetes_node_autoscaler   = var.kubernetes_node_autoscaler
+  kubevirt_os_preference       = local.images.linux.0.os_distribution
+  vm_disk_space                = local.images.linux.0.disk_space
+  source_url                   = local.images.linux.0.url # "https://releases.ubuntu.com/22.04.3/ubuntu-22.04.3-desktop-amd64.iso"
+  source_aws_access_key_id     = var.source_aws_access_key_id
+  source_aws_secret_access_key = var.source_aws_secret_access_key
+
+  communicator = "ssh"
+  ssh_port     = 2222
+
+  # communicator                 = "winrm"
+  # winrm_port                   = 5389
 }
 
 build {
   sources = [
-    "source.kubevirt-iso.ubuntu2204"
+    "source.kubevirt-iso.linux"
   ]
+
+  #   provisioner "ansible" {
+  #     playbook_file = "./playbook.yml"
+  #     roles_path    = "/path/to/your/roles"
+  #   }
+
+  post-processor "kubevirt-s3" {
+    s3_bucket             = var.destination_aws_s3_bucket
+    s3_key_prefix         = var.destination_aws_s3_key_prefix
+    aws_region            = var.destination_aws_region
+    aws_access_key_id     = var.destination_aws_access_key_id
+    aws_secret_access_key = var.destination_aws_secret_access_key
+  }
 }

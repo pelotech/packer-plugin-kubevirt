@@ -62,12 +62,12 @@ func (s *AppContext) GetVirtualMachineExportToken() string {
 }
 
 func (s *AppContext) BuildArtifact(builderId string) packersdk.Artifact {
-	return &Artifact{
+	return &KubevirtArtifact{
 		BuilderIdValue: builderId,
 		StateData: map[string]interface{}{
-			string(VirtualMachine):            s.GetVirtualMachine(),
-			string(VirtualMachineExport):      s.GetVirtualMachineExport(),
-			string(VirtualMachineExportToken): s.GetVirtualMachineExportToken(),
+			NamespaceArtifactKey:                 s.GetVirtualMachineExport().Namespace,
+			VirtualMachineExportNameArtifactKey:  s.GetVirtualMachineExport().Name,
+			VirtualMachineExportTokenArtifactKey: s.GetVirtualMachineExportToken(),
 		},
 	}
 }

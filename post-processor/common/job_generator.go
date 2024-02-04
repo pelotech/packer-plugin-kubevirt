@@ -7,13 +7,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"kubevirt.io/api/export/v1alpha1"
 	exportv1 "kubevirt.io/api/export/v1alpha1"
+	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/steps"
 	"path"
 )
 
 const (
-	TempVolumeMountVolumeMapping = "temp"
-	TempVolumeMountPath          = "/tmp"
+	tempVolumeMountVolumeMapping = "temp"
+	tempVolumeMountPath          = "/tmp"
+	exportTokenEnvVar            = "EXPORT_TOKEN"
+	jobSecretSuffix              = "s3-uploader"
 )
 
 type S3UploaderOptions struct {
@@ -24,7 +27,7 @@ type S3UploaderOptions struct {
 	ExportServerToken string
 
 	S3BucketName string
-	S3Key        string
+	S3KeyPrefix  string
 
 	AWSAccessKeyId     string
 	AWSSecretAccessKey string
@@ -34,18 +37,23 @@ type S3UploaderOptions struct {
 func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      opts.Name,
+			Name:      buildJobSecretName(opts.Name),
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind(job.Kind)),
+				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job")),
 			},
 		},
 		StringData: map[string]string{
 			"AWS_ACCESS_KEY_ID":     opts.AWSAccessKeyId,
 			"AWS_SECRET_ACCESS_KEY": opts.AWSSecretAccessKey,
 			"AWS_REGION":            opts.AWSRegion,
+			exportTokenEnvVar:       opts.ExportServerToken,
 		},
 	}
+}
+
+func buildJobSecretName(name string) string {
+	return fmt.Sprintf("%s-%s", name, jobSecretSuffix)
 }
 
 func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
@@ -56,7 +64,7 @@ func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3Uploade
 			Name:      fmt.Sprintf("s3-uploader-%s", opts.Name),
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(export.Kind)),
+				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -64,50 +72,64 @@ func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3Uploade
 				Spec: corev1.PodSpec{
 					InitContainers: []corev1.Container{
 						{
-							Name:  "download-vm",
-							Image: "busybox",
+							Name:  "download",
+							Image: "curlimages/curl:8.6.0",
 							Command: []string{
 								"/bin/sh",
 								"-c",
-								fmt.Sprintf("wget --no-check-certificate --header='%s: %s' -O %s/%s %s", steps.ExportTokenHeader, opts.ExportServerToken, TempVolumeMountPath, filename, opts.ExportServerUrl),
+								// TODO: should NOT ignored with '-k' cert but check properly with '--cert pemFile:secret'
+								fmt.Sprintf("curl -k -H \"%s: $%s\" -o %s/%s %s", steps.ExportTokenHeader, exportTokenEnvVar, tempVolumeMountPath, filename, opts.ExportServerUrl),
 							},
-							VolumeMounts: []corev1.VolumeMount{
+							Env: []corev1.EnvVar{
 								{
-									Name:      TempVolumeMountVolumeMapping,
-									MountPath: TempVolumeMountPath,
-								},
-							},
-						},
-					},
-					Containers: []corev1.Container{
-						{
-							Name:  "aws-cli",
-							Image: "amazon/aws-cli:latest",
-							Command: []string{
-								"/bin/sh",
-								"-c",
-								fmt.Sprintf("aws s3 cp %s/%s s3://%s", TempVolumeMountPath, filename, path.Join(opts.S3BucketName, opts.S3Key)),
-							},
-							EnvFrom: []corev1.EnvFromSource{
-								{
-									SecretRef: &corev1.SecretEnvSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: opts.Name,
+									Name: exportTokenEnvVar,
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: buildJobSecretName(opts.Name),
+											},
+											Key: exportTokenEnvVar,
 										},
 									},
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									Name:      TempVolumeMountVolumeMapping,
-									MountPath: TempVolumeMountPath,
+									Name:      tempVolumeMountVolumeMapping,
+									MountPath: tempVolumeMountPath,
+								},
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:  "upload",
+							Image: "amazon/aws-cli:latest",
+							Command: []string{
+								"/bin/sh",
+								"-c",
+								fmt.Sprintf("aws s3 cp %s/%s s3://%s", tempVolumeMountPath, filename, path.Join(opts.S3BucketName, opts.S3KeyPrefix, filename)),
+							},
+							EnvFrom: []corev1.EnvFromSource{
+								{
+									SecretRef: &corev1.SecretEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: buildJobSecretName(opts.Name),
+										},
+									},
+								},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      tempVolumeMountVolumeMapping,
+									MountPath: tempVolumeMountPath,
 								},
 							},
 						},
 					},
 					Volumes: []corev1.Volume{
 						{
-							Name: TempVolumeMountVolumeMapping,
+							Name: tempVolumeMountVolumeMapping,
 							VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{},
 							},
