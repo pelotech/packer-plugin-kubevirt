@@ -21,8 +21,9 @@ import (
 type StepDeployVM struct {
 	KubeClient               client.Client
 	VirtClient               kubecli.KubevirtClient
-	VmOptions                generator.VirtualMachineOptions
 	KubernetesNodeAutoscaler k8s.NodeAutoscaler
+	VmOptions                generator.VirtualMachineOptions
+	VmDeploymentTimeOut      time.Duration
 }
 
 func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -124,7 +125,7 @@ func (s *StepDeployVM) waitForVirtualMachine(ui packer.Ui, vm *kubevirtv1.Virtua
 		}
 		return false, nil
 	}
-	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, 7*time.Minute, watchFunc)
+	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmDeploymentTimeOut, watchFunc)
 	if err != nil {
 		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", vm.Namespace, vm.Name, err)
 	}
@@ -168,7 +169,6 @@ func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 		return
 	}
 
-	propagationPolicy := metav1.DeletePropagationForeground
-	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, &metav1.DeleteOptions{PropagationPolicy: &propagationPolicy})
+	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, &metav1.DeleteOptions{})
 	appContext.GetPackerUi().Message(fmt.Sprintf("Virtual Machine %s/%s has been deleted", vm.Namespace, vm.Name))
 }

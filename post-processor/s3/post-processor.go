@@ -27,11 +27,12 @@ import (
 type Config struct {
 	packercommon.PackerConfig `mapstructure:",squash"`
 	ctx                       interpolate.Context
-	S3Bucket                  string `mapstructure:"s3_bucket"`
-	S3KeyPrefix               string `mapstructure:"s3_key_prefix"`
-	AWSAccessKeyId            string `mapstructure:"aws_access_key_id"`
-	AWSSecretAccessKey        string `mapstructure:"aws_secret_access_key"`
-	AWSRegion                 string `mapstructure:"aws_region"`
+	S3Bucket                  string        `mapstructure:"s3_bucket"`
+	S3KeyPrefix               string        `mapstructure:"s3_key_prefix"`
+	AWSAccessKeyId            string        `mapstructure:"aws_access_key_id"`
+	AWSSecretAccessKey        string        `mapstructure:"aws_secret_access_key"`
+	AWSRegion                 string        `mapstructure:"aws_region"`
+	UploadTimeOut             time.Duration `mapstructure:"upload_timeout" required:"false"`
 }
 
 type PostProcessor struct {
@@ -59,6 +60,10 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 		return err
 	}
 
+	if p.config.UploadTimeOut == 0 {
+		p.config.UploadTimeOut = 10 * time.Minute
+	}
+
 	return nil
 }
 
@@ -71,13 +76,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	if err != nil {
 		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
 	}
-
-	defer func() {
-		err := p.cleanupResources(ns, name)
-		if err != nil {
-			ui.Error(fmt.Sprintf("Failed to clean up VM export: %v", err))
-		}
-	}()
+	defer p.cleanupResources(ui, ns, name)
 
 	var exportServerUrl string
 	for _, vol := range export.Status.Links.Internal.Volumes {
@@ -90,7 +89,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		}
 	}
 	if exportServerUrl == "" {
-		return nil, true, true, fmt.Errorf("failed to find export server url")
+		return nil, true, true, fmt.Errorf("failed to get export server url from Virtual Machine Export %s/%s: %v", ns, name, export.Status)
 	}
 
 	options := common.S3UploaderOptions{
@@ -117,7 +116,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		return nil, true, true, fmt.Errorf("failed to create S3 uploader secret: %w", err)
 	}
 
-	err = p.waitForJobCompletion(ui, job)
+	err = p.waitForJobCompletion(ui, job, p.config.UploadTimeOut)
 	if err != nil {
 		return nil, true, true, fmt.Errorf("failed to get S3 uploader job successfully completed: %w", err)
 	}
@@ -125,8 +124,8 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	return source, true, true, nil
 }
 
-func (p *PostProcessor) waitForJobCompletion(ui packersdk.Ui, job *batchv1.Job) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Minute)
+func (p *PostProcessor) waitForJobCompletion(ui packersdk.Ui, job *batchv1.Job, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
 	defer cancel()
 
 	watcher, err := p.virtClient.BatchV1().Jobs(job.Namespace).Watch(ctx, metav1.ListOptions{
@@ -149,7 +148,7 @@ func (p *PostProcessor) waitForJobCompletion(ui packersdk.Ui, job *batchv1.Job) 
 				if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
 					return nil
 				} else if (condition.Type == batchv1.JobFailed || condition.Type == batchv1.JobFailureTarget) && condition.Status == corev1.ConditionTrue {
-					return fmt.Errorf("failure to upload export with S3 Uploader Job")
+					return fmt.Errorf("failed to upload export with S3 Uploader Job")
 				}
 			}
 
@@ -159,6 +158,11 @@ func (p *PostProcessor) waitForJobCompletion(ui packersdk.Ui, job *batchv1.Job) 
 	}
 }
 
-func (p *PostProcessor) cleanupResources(ns, name string) error {
-	return p.virtClient.VirtualMachineExport(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
+func (p *PostProcessor) cleanupResources(ui packersdk.Ui, ns, name string) {
+	err := p.virtClient.VirtualMachineExport(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if err == nil {
+		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", ns, name))
+	} else {
+		ui.Error(fmt.Sprintf("failed to delete Virtual Machine Export  %s/%s: %v", ns, name, err))
+	}
 }

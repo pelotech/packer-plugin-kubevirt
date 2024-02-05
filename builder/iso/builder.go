@@ -23,6 +23,7 @@ import (
 	"packer-plugin-kubevirt/builder/common/utils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	v1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
+	"time"
 )
 
 const (
@@ -30,20 +31,18 @@ const (
 )
 
 type Config struct {
-	common.PackerConfig `mapstructure:",squash"`
-	Comm                communicator.Config `mapstructure:",squash"`
-
-	KubernetesName           string             `mapstructure:"kubernetes_name"`
-	KubernetesNamespace      string             `mapstructure:"kubernetes_namespace"`
-	KubernetesNodeAutoscaler k8s.NodeAutoscaler `mapstructure:"kubernetes_node_autoscaler"`
-
-	KubevirtOsPreference string `mapstructure:"kubevirt_os_preference"`
-
-	VirtualMachineDiskSpace string `mapstructure:"vm_disk_space"`
-
-	SourceUrl                string `mapstructure:"source_url"`
-	SourceAWSAccessKeyId     string `mapstructure:"source_aws_access_key_id"`
-	SourceAWSSecretAccessKey string `mapstructure:"source_aws_secret_access_key"`
+	common.PackerConfig             `mapstructure:",squash"`
+	Comm                            communicator.Config `mapstructure:",squash"`
+	KubernetesName                  string              `mapstructure:"kubernetes_name"`
+	KubernetesNamespace             string              `mapstructure:"kubernetes_namespace"`
+	KubernetesNodeAutoscaler        k8s.NodeAutoscaler  `mapstructure:"kubernetes_node_autoscaler" required:"false"`
+	KubevirtOsPreference            string              `mapstructure:"kubevirt_os_preference"`
+	VirtualMachineDiskSpace         string              `mapstructure:"vm_disk_space"`
+	VirtualMachineDeploymentTimeOut time.Duration       `mapstructure:"vm_deployment_timeout" required:"false"`
+	VirtualMachineExportTimeOut     time.Duration       `mapstructure:"vm_export_timeout" required:"false"`
+	SourceUrl                       string              `mapstructure:"source_url"`
+	SourceAWSAccessKeyId            string              `mapstructure:"source_aws_access_key_id" required:"false"`
+	SourceAWSSecretAccessKey        string              `mapstructure:"source_aws_secret_access_key" required:"false"`
 }
 
 type Builder struct {
@@ -72,6 +71,18 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	// 4. Any computed values (if needed)
 	if utils.IsReservedPort(b.config.Comm.SSHPort) || utils.IsReservedPort(b.config.Comm.WinRMPort) {
 		return nil, nil, fmt.Errorf("the local port for communicating with the remote machine is reserved - please use a port above 1024")
+	}
+
+	if b.config.KubernetesNodeAutoscaler == "" {
+		b.config.KubernetesNodeAutoscaler = k8s.DefaultNodeAutoscaler
+	}
+
+	if b.config.VirtualMachineDeploymentTimeOut == 0 {
+		b.config.VirtualMachineDeploymentTimeOut = 10 * time.Minute
+	}
+
+	if b.config.VirtualMachineExportTimeOut == 0 {
+		b.config.VirtualMachineExportTimeOut = 5 * time.Minute
 	}
 
 	if b.config.Comm.Type == "" {
@@ -123,6 +134,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 				},
 				DiskSpace: b.config.VirtualMachineDiskSpace,
 			},
+			VmDeploymentTimeOut: b.config.VirtualMachineDeploymentTimeOut,
 		},
 		&stepDef.StepPortForwardVM{
 			VirtClient: b.virtClient,
@@ -160,7 +172,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		&commonsteps.StepProvision{},
 		&stepDef.StepExportVM{
-			VirtClient: b.virtClient,
+			VirtClient:      b.virtClient,
+			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
 		},
 	}
 

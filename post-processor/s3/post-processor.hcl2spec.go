@@ -23,6 +23,7 @@ type FlatConfig struct {
 	AWSAccessKeyId      *string           `mapstructure:"aws_access_key_id" cty:"aws_access_key_id" hcl:"aws_access_key_id"`
 	AWSSecretAccessKey  *string           `mapstructure:"aws_secret_access_key" cty:"aws_secret_access_key" hcl:"aws_secret_access_key"`
 	AWSRegion           *string           `mapstructure:"aws_region" cty:"aws_region" hcl:"aws_region"`
+	UploadTimeOut       *string           `mapstructure:"upload_timeout" required:"false" cty:"upload_timeout" hcl:"upload_timeout"`
 }
 
 // FlatMapstructure returns a new FlatConfig.
@@ -50,6 +51,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"aws_access_key_id":          &hcldec.AttrSpec{Name: "aws_access_key_id", Type: cty.String, Required: false},
 		"aws_secret_access_key":      &hcldec.AttrSpec{Name: "aws_secret_access_key", Type: cty.String, Required: false},
 		"aws_region":                 &hcldec.AttrSpec{Name: "aws_region", Type: cty.String, Required: false},
+		"upload_timeout":             &hcldec.AttrSpec{Name: "upload_timeout", Type: cty.String, Required: false},
 	}
 	return s
 }

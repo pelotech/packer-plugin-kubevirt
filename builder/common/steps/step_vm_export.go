@@ -24,7 +24,8 @@ const (
 )
 
 type StepExportVM struct {
-	VirtClient kubecli.KubevirtClient
+	VirtClient      kubecli.KubevirtClient
+	VmExportTimeOut time.Duration
 }
 
 func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -89,7 +90,7 @@ func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine) (*exportv1.Vi
 }
 
 func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.VirtualMachineExport) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), 4*time.Minute)
+	ctx, cancel := context.WithTimeout(context.TODO(), s.VmExportTimeOut)
 	defer cancel()
 
 	watcher, _ := s.VirtClient.VirtualMachineExport(export.Namespace).Watch(ctx, metav1.ListOptions{
