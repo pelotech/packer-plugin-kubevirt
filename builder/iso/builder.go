@@ -172,8 +172,9 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		&commonsteps.StepProvision{},
 		&stepDef.StepExportVM{
-			VirtClient:      b.virtClient,
-			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
+			VirtClient:               b.virtClient,
+			VmExportTimeOut:          b.config.VirtualMachineExportTimeOut,
+			KubernetesNodeAutoscaler: b.config.KubernetesNodeAutoscaler,
 		},
 	}
 

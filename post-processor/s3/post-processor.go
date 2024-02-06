@@ -18,7 +18,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/generator"
+	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	"packer-plugin-kubevirt/post-processor/common"
 	"strings"
 	"time"
@@ -79,8 +79,11 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	defer p.cleanupResources(ui, ns, name)
 
 	var exportServerUrl string
+	if links := export.Status.Links; links.Internal == nil || links.Internal.Volumes == nil {
+		return nil, true, true, fmt.Errorf("failed to get any data from Virtual Machine Export %s/%s: %v", ns, name, export.Status)
+	}
 	for _, vol := range export.Status.Links.Internal.Volumes {
-		if strings.HasSuffix(vol.Name, string(vmgenerator.SourceDataVolumeSuffix)) { // may need better logic if many volumes
+		if strings.HasSuffix(vol.Name, string(generator.SourceDataVolumeSuffix)) { // may need better logic if many volumes
 			for _, volumeFormat := range vol.Formats {
 				if volumeFormat.Format == v1alpha1.KubeVirtGz {
 					exportServerUrl = volumeFormat.Url
@@ -89,19 +92,20 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		}
 	}
 	if exportServerUrl == "" {
-		return nil, true, true, fmt.Errorf("failed to get export server url from Virtual Machine Export %s/%s: %v", ns, name, export.Status)
+		return nil, true, true, fmt.Errorf("failed to get the desired volume URL from Virtual Machine Export %s/%s: %v", ns, name, export.Status)
 	}
 
 	options := common.S3UploaderOptions{
-		Name:               export.Name,
-		Namespace:          export.Namespace,
-		ExportServerUrl:    exportServerUrl,
-		ExportServerToken:  token,
-		S3BucketName:       p.config.S3Bucket,
-		S3KeyPrefix:        p.config.S3KeyPrefix,
-		AWSAccessKeyId:     p.config.AWSAccessKeyId,
-		AWSSecretAccessKey: p.config.AWSSecretAccessKey,
-		AWSRegion:          p.config.AWSRegion,
+		Name:                    export.Name,
+		Namespace:               export.Namespace,
+		ExportServerUrl:         exportServerUrl,
+		ExportServerToken:       token,
+		ExportServerCertificate: export.Status.Links.Internal.Cert,
+		S3BucketName:            p.config.S3Bucket,
+		S3KeyPrefix:             p.config.S3KeyPrefix,
+		AWSAccessKeyId:          p.config.AWSAccessKeyId,
+		AWSSecretAccessKey:      p.config.AWSSecretAccessKey,
+		AWSRegion:               p.config.AWSRegion,
 	}
 
 	job := common.GenerateS3UploaderJob(export, options)

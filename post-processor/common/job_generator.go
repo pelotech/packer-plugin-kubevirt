@@ -13,9 +13,12 @@ import (
 )
 
 const (
+	certVolumeMountVolumeMapping = "cert"
+	certVolumeMountPath          = "/cert"
 	tempVolumeMountVolumeMapping = "temp"
 	tempVolumeMountPath          = "/tmp"
 	exportTokenEnvVar            = "EXPORT_TOKEN"
+	exportServerPEMCert          = "cert.pem"
 	jobSecretSuffix              = "s3-uploader"
 )
 
@@ -23,8 +26,9 @@ type S3UploaderOptions struct {
 	Name      string
 	Namespace string
 
-	ExportServerUrl   string
-	ExportServerToken string
+	ExportServerUrl         string
+	ExportServerToken       string
+	ExportServerCertificate string
 
 	S3BucketName string
 	S3KeyPrefix  string
@@ -48,6 +52,7 @@ func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.
 			"AWS_SECRET_ACCESS_KEY": opts.AWSSecretAccessKey,
 			"AWS_REGION":            opts.AWSRegion,
 			exportTokenEnvVar:       opts.ExportServerToken,
+			exportServerPEMCert:     opts.ExportServerCertificate,
 		},
 	}
 }
@@ -77,8 +82,11 @@ func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3Uploade
 							Command: []string{
 								"/bin/sh",
 								"-c",
-								// TODO: should NOT ignored with '-k' cert but check properly with '--cert pemFile:secret'
-								fmt.Sprintf("curl -k -H \"%s: $%s\" -o %s/%s %s", steps.ExportTokenHeader, exportTokenEnvVar, tempVolumeMountPath, filename, opts.ExportServerUrl),
+								fmt.Sprintf("curl --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
+									certVolumeMountPath, exportServerPEMCert,
+									tempVolumeMountPath, filename,
+									steps.ExportTokenHeader, exportTokenEnvVar,
+									opts.ExportServerUrl),
 							},
 							Env: []corev1.EnvVar{
 								{
@@ -97,6 +105,10 @@ func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3Uploade
 								{
 									Name:      tempVolumeMountVolumeMapping,
 									MountPath: tempVolumeMountPath,
+								},
+								{
+									Name:      certVolumeMountVolumeMapping,
+									MountPath: certVolumeMountPath,
 								},
 							},
 						},
@@ -132,6 +144,20 @@ func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3Uploade
 							Name: tempVolumeMountVolumeMapping,
 							VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
+						{
+							Name: certVolumeMountVolumeMapping,
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: buildJobSecretName(opts.Name),
+									Items: []corev1.KeyToPath{
+										{
+											Key:  exportServerPEMCert,
+											Path: exportServerPEMCert,
+										},
+									},
+								},
 							},
 						},
 					},

@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"github.com/aws/karpenter/pkg/errors"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	"github.com/hashicorp/packer-plugin-sdk/packer"
 	corev1 "k8s.io/api/core/v1"
@@ -13,7 +14,8 @@ import (
 	exportv1 "kubevirt.io/api/export/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
-	vmgenerator "packer-plugin-kubevirt/builder/common/k8s/generator"
+	"packer-plugin-kubevirt/builder/common/k8s"
+	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"time"
 )
@@ -24,8 +26,9 @@ const (
 )
 
 type StepExportVM struct {
-	VirtClient      kubecli.KubevirtClient
-	VmExportTimeOut time.Duration
+	VirtClient               kubecli.KubevirtClient
+	VmExportTimeOut          time.Duration
+	KubernetesNodeAutoscaler k8s.NodeAutoscaler
 }
 
 func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -44,7 +47,22 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 
 	ui.Say(fmt.Sprintf("creating Virtual Machine Export %s/%s...", vm.Namespace, vm.Name))
-	export, err := s.createExport(vm)
+
+	// NOTE: Exporter pod is scheduled on default node pool with no customization available to target a specific node.
+	// If not enough resources are available, Karpenter is currently unable to schedule a new node for it
+	if s.KubernetesNodeAutoscaler == k8s.KarpenterNodeAutoscaler {
+		job := generator.GenerateInitJob(vm.Namespace, "export", 2*time.Minute, k8s.DefaultNodeAutoscaler)
+		_, err = s.VirtClient.BatchV1().Jobs(vm.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		if err != nil && !errors.IsAlreadyExists(err) {
+			err := fmt.Errorf("failed to create init job for Virtual Machine Export %s/%s: %s", vm.Namespace, vm.Name, err)
+			appContext.Put(common.PackerError, err)
+			ui.Error(err.Error())
+
+			return multistep.ActionHalt
+		}
+	}
+
+	export, err := s.createExport(ui, vm)
 	if err != nil {
 		err := fmt.Errorf("failed to create Virtual Machine Export %s/%s: %s", vm.Namespace, vm.Name, err)
 		appContext.Put(common.PackerError, err)
@@ -79,9 +97,20 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	return multistep.ActionContinue
 }
 
-func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine) (*exportv1.VirtualMachineExport, error) {
-	export := vmgenerator.GenerateVirtualMachineExport(vm)
-	export, err := s.VirtClient.VirtualMachineExport(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
+func (s *StepExportVM) createExport(ui packer.Ui, vm *kubevirtv1.VirtualMachine) (*exportv1.VirtualMachineExport, error) {
+	export := generator.GenerateVirtualMachineExport(vm)
+
+	_, err := s.VirtClient.VirtualMachineExport(vm.Namespace).Get(context.TODO(), export.Name, metav1.GetOptions{})
+	if k8serrors.IsAlreadyExists(err) {
+		err = utils.AskForRecreation(ui, func() error {
+			return s.VirtClient.VirtualMachineExport(vm.Namespace).Delete(context.TODO(), export.Name, metav1.DeleteOptions{})
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	export, err = s.VirtClient.VirtualMachineExport(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +145,7 @@ func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.Virtual
 }
 
 func (s *StepExportVM) createTokenSecret(export *exportv1.VirtualMachineExport, token string) (*corev1.Secret, error) {
-	secret := vmgenerator.GenerateTokenSecret(export, token)
+	secret := generator.GenerateTokenSecret(export, token)
 	secret, err := s.VirtClient.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
 	if err != nil && !k8serrors.IsAlreadyExists(err) {
 		return nil, err

@@ -148,9 +148,8 @@ func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
 			return err
 		}
 
-		ttlInSeconds := 120
-		pod := generator.GenerateInitJob(ns, name, ttlInSeconds)
-		_, err = s.VirtClient.BatchV1().Jobs(ns).Create(context.TODO(), pod, metav1.CreateOptions{})
+		job := generator.GenerateInitJob(ns, name, 2*time.Minute, k8s.KarpenterNodeAutoscaler)
+		_, err = s.VirtClient.BatchV1().Jobs(ns).Create(context.TODO(), job, metav1.CreateOptions{})
 		if err != nil && !errors.IsAlreadyExists(err) {
 			return err
 		}
@@ -169,6 +168,9 @@ func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 		return
 	}
 
-	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, &metav1.DeleteOptions{})
+	propagationPolicy := metav1.DeletePropagationForeground
+	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, &metav1.DeleteOptions{
+		PropagationPolicy: &propagationPolicy,
+	})
 	appContext.GetPackerUi().Message(fmt.Sprintf("Virtual Machine %s/%s has been deleted", vm.Namespace, vm.Name))
 }
