@@ -45,12 +45,3 @@ func GetKubevirtClient() (kubecli.KubevirtClient, error) {
 
 	return client, nil
 }
-
-func GetInClusterKubevirtClient() (kubecli.KubevirtClient, error) {
-	client, err := kubecli.GetKubevirtClientFromFlags("", "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Kubevirt client: %w", err)
-	}
-
-	return client, nil
-}

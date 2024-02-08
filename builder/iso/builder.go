@@ -22,7 +22,7 @@ import (
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/utils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	v1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
+	"sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 	"time"
 )
 
@@ -117,7 +117,6 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 }
 
 func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
-
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
 			VirtClient:               b.virtClient,
@@ -138,10 +137,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		&stepDef.StepPortForwardVM{
 			VirtClient: b.virtClient,
-			PortMappings: []string{
-				fmt.Sprintf("%d:%d", utils.GetOrDefault(b.config.Comm.SSHPort, buildercommon.DefaultSSHPort), buildercommon.DefaultSSHPort),
-				fmt.Sprintf("%d:%d", utils.GetOrDefault(b.config.Comm.WinRMPort, buildercommon.DefaultWinRMPort), buildercommon.DefaultWinRMPort),
-			},
+			Comm:       b.config.Comm,
 		},
 		&communicator.StepConnect{
 			Config: &b.config.Comm,

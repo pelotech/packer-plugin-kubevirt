@@ -99,9 +99,14 @@ func buildProbeExecCommand(family OsFamily) []string {
 		}
 	case Windows:
 		command = []string{
-			"findstr",
-			"IMAGE_STATE_COMPLETE",
-			"%SystemRoot%\\Setup\\State\\state.ini",
+			// NOTE: echo is 'acceptable' because qemu-ga is the last tool provisioned through sysprep.
+			"cmd",
+			"/c",
+			"echo",
+			// Error: Warning  Unhealthy kubelet: Readiness probe failed: {"component":"virt-probe","level":"fatal","msg":"Failed executing the command","pos":"virt-probe.go:71","reason":"rpc error: code = Unknown desc = virError(Code=1, Domain=0, Message='internal error: cannot parse json {\"execute\": \"guest-exec\", \"arguments\": { \"path\": \"findstr\", \"arg\": [ \"IMAGE_STATE_COMPLETE\", \"%SystemRoot%\\Setup\\State\\state.ini\" ], \"capture-output\":true } }: lexical error: inside a string, '\\' occurs before a character which it may not.
+			//"findstr",
+			//"IMAGE_STATE_COMPLETE",
+			//"C:\\Windows\\Setup\\State\\State.ini",
 		}
 	}
 
@@ -183,7 +188,7 @@ func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMa
 func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachine {
 	isRunning := true
 	osFamily := getOSFamily(opts.OsPreference)
-	disks := generateDisks(osFamily, opts)
+	disks := generateDisks(osFamily)
 	volumes := generateVolumes(osFamily, opts)
 	probeExecCommand := buildProbeExecCommand(osFamily)
 
@@ -345,19 +350,20 @@ Tradeoffs:
  2. +: Parallelism
     -: Orchestration managed outside of Packer anyway needed for step 3 (1. run installs 2. run base images 3. run lab images)
 */
-func generateDisks(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Disk {
-	disks := []kubevirtv1.Disk{{
-		Name: string(PrimaryVolumeDiskMapping),
-		DiskDevice: kubevirtv1.DiskDevice{
-			Disk: &kubevirtv1.DiskTarget{
-				Bus: kubevirtv1.DiskBusVirtio,
-			},
-		},
-	}}
+func generateDisks(family OsFamily) []kubevirtv1.Disk {
+	var disks []kubevirtv1.Disk
 
 	switch family {
 	case Linux:
 		disks = append(disks,
+			kubevirtv1.Disk{
+				Name: string(PrimaryVolumeDiskMapping),
+				DiskDevice: kubevirtv1.DiskDevice{
+					Disk: &kubevirtv1.DiskTarget{
+						Bus: kubevirtv1.DiskBusVirtio,
+					},
+				},
+			},
 			kubevirtv1.Disk{
 				Name: string(CloudInitVolumeDiskMapping),
 				DiskDevice: kubevirtv1.DiskDevice{
@@ -369,6 +375,15 @@ func generateDisks(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Dis
 	case Windows:
 		bootOrder := uint(1)
 		disks = append(disks,
+			// Disk C:
+			kubevirtv1.Disk{
+				Name: string(PrimaryVolumeDiskMapping),
+				DiskDevice: kubevirtv1.DiskDevice{
+					Disk: &kubevirtv1.DiskTarget{
+						Bus: kubevirtv1.DiskBusSATA,
+					},
+				},
+			},
 			// Disk D:
 			kubevirtv1.Disk{
 				Name:      string(IsoInstallVolumeDiskMapping),
@@ -396,8 +411,7 @@ func generateDisks(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Dis
 						Bus: kubevirtv1.DiskBusSATA,
 					},
 				},
-			},
-		)
+			})
 	}
 
 	return disks

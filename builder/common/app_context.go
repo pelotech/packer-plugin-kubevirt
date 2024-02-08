@@ -10,10 +10,9 @@ import (
 type StateBagEntry string
 
 const (
-	PackerHook  StateBagEntry = "hook"
-	PackerUi    StateBagEntry = "ui"
-	PackerError StateBagEntry = "error"
-
+	PackerHook                StateBagEntry = "hook"
+	PackerUi                  StateBagEntry = "ui"
+	PackerError               StateBagEntry = "error"
 	VirtualMachine            StateBagEntry = "vm"
 	VirtualMachineExport      StateBagEntry = "vmexport"
 	VirtualMachineExportToken StateBagEntry = "vmexporttoken"

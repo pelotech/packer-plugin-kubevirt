@@ -116,7 +116,7 @@ func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3Uploade
 					Containers: []corev1.Container{
 						{
 							Name:  "upload",
-							Image: "amazon/aws-cli:latest",
+							Image: "amazon/aws-cli:2.15.17",
 							Command: []string{
 								"/bin/sh",
 								"-c",

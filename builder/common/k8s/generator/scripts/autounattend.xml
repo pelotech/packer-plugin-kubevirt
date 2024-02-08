@@ -92,7 +92,7 @@
                     <InstallFrom>
                         <MetaData wcm:action="add">
                             <Key>/IMAGE/NAME</Key>
-                            <Value>Windows 10 Enterprise Evaluation</Value>
+                            <Value>Windows 10 Pro</Value>
                         </MetaData>
                     </InstallFrom>
                     <InstallTo>
@@ -103,11 +103,12 @@
             </ImageInstall>
             <UserData>
                 <ProductKey>
+                    <Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key>
                     <WillShowUI>OnError</WillShowUI>
                 </ProductKey>
                 <AcceptEula>true</AcceptEula>
                 <FullName>packer</FullName>
-                <Organization>Bento by Chef Software, Inc.</Organization>
+                <Organization>UKI</Organization>
             </UserData>
             <DynamicUpdate>
                 <Enable>false</Enable>
@@ -259,6 +260,11 @@
                     <Order>17</Order>
                     <CommandLine>%windir%\System32\cmd.exe /c wmic useraccount where "name='packer'" set PasswordExpires=FALSE</CommandLine>
                     <Description>Disable password expiration for packer user</Description>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <CommandLine>msiexec.exe /i E:\guest-agent\qemu-ga-x86_64.msi /quiet</CommandLine>
+                    <Order>18</Order>
+                    <Description>Install QEMU Guest Agent</Description>
                 </SynchronousCommand>
             </FirstLogonCommands>
         </component>
