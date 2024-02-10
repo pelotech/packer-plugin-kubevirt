@@ -16,7 +16,7 @@ import (
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
-	"packer-plugin-kubevirt/builder/common/utils"
+	vmctx "packer-plugin-kubevirt/builder/common/vm"
 	"time"
 )
 
@@ -46,6 +46,32 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 		return multistep.ActionHalt
 	}
 
+	osFamily := *appContext.GetVirtualMachineOSFamily()
+	if vmctx.Linux == osFamily {
+		ui.Say(fmt.Sprintf("generify-ing with 'virt-sysprep' Virtual Machine for export %s/%s...", vm.Namespace, vm.Name))
+
+		pvcName := generator.BuildDataVolumeName(vm.Name, generator.SourceDataVolumeSuffix)
+		job := generator.GenerateGuestFSJob(vm, pvcName)
+
+		job, err = s.VirtClient.BatchV1().Jobs(vm.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		if err != nil {
+			err = fmt.Errorf("failed to create 'libguestfs' Job for Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err)
+			appContext.Put(common.PackerError, err)
+			ui.Error(err.Error())
+
+			return multistep.ActionHalt
+		}
+
+		err = k8s.WaitForJobCompletion(s.VirtClient.BatchV1(), ui, job, 2*time.Minute)
+		if err != nil {
+			err := fmt.Errorf("error with 'libguestfs' job %s/%s: %s", vm.Namespace, vm.Name, err)
+			appContext.Put(common.PackerError, err)
+			ui.Error(err.Error())
+
+			return multistep.ActionHalt
+		}
+	}
+
 	ui.Say(fmt.Sprintf("creating Virtual Machine Export %s/%s...", vm.Namespace, vm.Name))
 
 	// NOTE: Exporter pod is scheduled on default node pool with no customization available to target a specific node.
@@ -72,7 +98,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 	appContext.Put(common.VirtualMachineExport, export)
 
-	exportToken := utils.GenerateRandomPassword(secretTokenLength)
+	exportToken := common.GenerateRandomPassword(secretTokenLength)
 	_, err = s.createTokenSecret(export, exportToken)
 	if err != nil {
 		err := fmt.Errorf("failed to create Virtual Machine Export secret %s/%s: %s", vm.Namespace, vm.Name, err)
@@ -102,7 +128,7 @@ func (s *StepExportVM) createExport(ui packer.Ui, vm *kubevirtv1.VirtualMachine)
 
 	_, err := s.VirtClient.VirtualMachineExport(vm.Namespace).Get(context.TODO(), export.Name, metav1.GetOptions{})
 	if k8serrors.IsAlreadyExists(err) {
-		err = utils.AskForRecreation(ui, func() error {
+		err = common.AskForRecreation(ui, func() error {
 			return s.VirtClient.VirtualMachineExport(vm.Namespace).Delete(context.TODO(), export.Name, metav1.DeleteOptions{})
 		})
 		if err != nil {

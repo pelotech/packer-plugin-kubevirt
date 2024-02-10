@@ -5,6 +5,7 @@ import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1alpha1"
+	"packer-plugin-kubevirt/builder/common/vm"
 )
 
 type StateBagEntry string
@@ -14,6 +15,7 @@ const (
 	PackerUi                  StateBagEntry = "ui"
 	PackerError               StateBagEntry = "error"
 	VirtualMachine            StateBagEntry = "vm"
+	VirtualMachineOsFamily    StateBagEntry = "vmosfamily"
 	VirtualMachineExport      StateBagEntry = "vmexport"
 	VirtualMachineExportToken StateBagEntry = "vmexporttoken"
 
@@ -44,6 +46,14 @@ func (s *AppContext) GetVirtualMachine() *kubevirtv1.VirtualMachine {
 	vm := s.get(VirtualMachine)
 	if vm != nil {
 		return vm.(*kubevirtv1.VirtualMachine)
+	}
+	return nil
+}
+
+func (s *AppContext) GetVirtualMachineOSFamily() *vm.OsFamily {
+	osFamily := s.get(VirtualMachineOsFamily)
+	if osFamily != nil {
+		return osFamily.(*vm.OsFamily)
 	}
 	return nil
 }

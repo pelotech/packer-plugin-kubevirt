@@ -11,13 +11,11 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	"packer-plugin-kubevirt/builder/common/utils"
 )
 
 type StepPortForwardVM struct {
 	VirtClient kubecli.KubevirtClient
 	Comm       communicator.Config
-	//PortMappings []string
 	stopChan chan struct{}
 }
 
@@ -66,10 +64,10 @@ func (s *StepPortForwardVM) computePortMappings() ([]string, error) {
 	var portMapping string
 	switch s.Comm.Type {
 	case "ssh":
-		portMapping = fmt.Sprintf("%d:%d", utils.GetOrDefault(s.Comm.SSHPort, common.DefaultSSHPort), common.DefaultSSHPort)
+		portMapping = fmt.Sprintf("%d:%d", common.GetOrDefault(s.Comm.SSHPort, common.DefaultSSHPort), common.DefaultSSHPort)
 	case "winrm":
 		// NOTE: sysprep has the current DefaultWinRMPort value hardcoded, please change that value carefully while the sysprep conf. is not templated.
-		portMapping = fmt.Sprintf("%d:%d", utils.GetOrDefault(s.Comm.WinRMPort, common.DefaultWinRMPort), common.DefaultWinRMPort)
+		portMapping = fmt.Sprintf("%d:%d", common.GetOrDefault(s.Comm.WinRMPort, common.DefaultWinRMPort), common.DefaultWinRMPort)
 	default:
 		return nil, fmt.Errorf("unsupported communicator type, allowed values: 'ssh', 'winrm'")
 	}

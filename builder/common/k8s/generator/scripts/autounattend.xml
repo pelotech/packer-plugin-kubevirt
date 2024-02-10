@@ -262,9 +262,14 @@
                     <Description>Disable password expiration for packer user</Description>
                 </SynchronousCommand>
                 <SynchronousCommand wcm:action="add">
+                    <CommandLine>%windir%\System32\Sysprep\sysprep.exe /generalize /oobe /mode:vm</CommandLine>
+                    <Order>98</Order>
+                    <Description>Run Sysprep to generalize the Windows configuration and prepare for cloning before shutting down</Description>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
                     <CommandLine>msiexec.exe /i E:\guest-agent\qemu-ga-x86_64.msi /quiet</CommandLine>
-                    <Order>18</Order>
-                    <Description>Install QEMU Guest Agent</Description>
+                    <Order>99</Order>
+                    <Description>Install the QEMU Guest Agent as the final step, since this will cause the readiness probe to report ready</Description>
                 </SynchronousCommand>
             </FirstLogonCommands>
         </component>
@@ -273,6 +278,12 @@
         </component>
     </settings>
     <settings pass="specialize">
+        <component name="Microsoft-Windows-TerminalServices-LocalSessionManager" processorArchitecture="x86" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+        <fDenyTSConnections>false</fDenyTSConnections>
+        </component>
+        <component name="Microsoft-Windows-TerminalServices-RDP-WinStationExtensions" processorArchitecture="x86" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <UserAuthentication>0</UserAuthentication>
+        </component>
         <component name="Microsoft-Windows-SystemRestore-Main" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
             <DisableSR>1</DisableSR>
         </component>
@@ -284,6 +295,11 @@
                 <FirewallGroup wcm:action="add" wcm:keyValue="WindowsRemoteManagement">
                     <Active>true</Active>
                     <Group>Windows Remote Management</Group>
+                    <Profile>all</Profile>
+                </FirewallGroup>
+                <FirewallGroup wcm:action="add" wcm:keyValue="rd1">
+                    <Active>true</Active>
+                    <Group>Remote Desktop</Group>
                     <Profile>all</Profile>
                 </FirewallGroup>
                 <FirewallGroup wcm:action="add" wcm:keyValue="RemoteAdministration">

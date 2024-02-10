@@ -1,4 +1,4 @@
-package utils
+package common
 
 import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"

@@ -20,7 +20,7 @@ import (
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
-	"packer-plugin-kubevirt/builder/common/utils"
+	"packer-plugin-kubevirt/builder/common/vm"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 	"time"
@@ -69,7 +69,7 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	// 2. Validate configuration fields
 	// 3. Validate credentials (e.g. k8s clients)
 	// 4. Any computed values (if needed)
-	if utils.IsReservedPort(b.config.Comm.SSHPort) || utils.IsReservedPort(b.config.Comm.WinRMPort) {
+	if buildercommon.IsReservedPort(b.config.Comm.SSHPort) || buildercommon.IsReservedPort(b.config.Comm.WinRMPort) {
 		return nil, nil, fmt.Errorf("the local port for communicating with the remote machine is reserved - please use a port above 1024")
 	}
 
@@ -117,15 +117,24 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 }
 
 func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
+	state := new(multistep.BasicStateBag)
+	appContext := &buildercommon.AppContext{State: state}
+	appContext.Put(buildercommon.PackerHook, hook)
+	appContext.Put(buildercommon.PackerUi, ui)
+
+	osFamily := vm.GetOSFamily(b.config.KubevirtOsPreference)
+	appContext.Put(buildercommon.VirtualMachineOsFamily, &osFamily)
+
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
 			VirtClient:               b.virtClient,
 			KubeClient:               b.kubeClient,
 			KubernetesNodeAutoscaler: b.config.KubernetesNodeAutoscaler,
 			VmOptions: generator.VirtualMachineOptions{
-				Name:         b.config.KubernetesName,
-				Namespace:    b.config.KubernetesNamespace,
-				OsPreference: b.config.KubevirtOsPreference,
+				Name:           b.config.KubernetesName,
+				Namespace:      b.config.KubernetesNamespace,
+				OsDistribution: b.config.KubevirtOsPreference,
+				OsFamily:       osFamily,
 				ImageSource: generator.ImageSource{
 					URL:                b.config.SourceUrl,
 					AWSAccessKeyId:     b.config.SourceAWSAccessKeyId,
@@ -154,7 +163,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 				}, nil
 			},
 			SSHPort: func(bag multistep.StateBag) (int, error) {
-				return utils.GetOrDefault(b.config.Comm.SSHPort, buildercommon.DefaultSSHPort), nil
+				return buildercommon.GetOrDefault(b.config.Comm.SSHPort, buildercommon.DefaultSSHPort), nil
 			},
 			WinRMConfig: func(bag multistep.StateBag) (*communicator.WinRMConfig, error) {
 				return &communicator.WinRMConfig{
@@ -163,7 +172,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 				}, nil
 			},
 			WinRMPort: func(bag multistep.StateBag) (int, error) {
-				return utils.GetOrDefault(b.config.Comm.WinRMPort, buildercommon.DefaultWinRMPort), nil
+				return buildercommon.GetOrDefault(b.config.Comm.WinRMPort, buildercommon.DefaultWinRMPort), nil
 			},
 		},
 		&commonsteps.StepProvision{},
@@ -173,11 +182,6 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			KubernetesNodeAutoscaler: b.config.KubernetesNodeAutoscaler,
 		},
 	}
-
-	state := new(multistep.BasicStateBag)
-	appContext := &buildercommon.AppContext{State: state}
-	appContext.Put(buildercommon.PackerHook, hook)
-	appContext.Put(buildercommon.PackerUi, ui)
 
 	// Run!
 	b.runner = commonsteps.NewRunner(steps, b.config.PackerConfig, ui)

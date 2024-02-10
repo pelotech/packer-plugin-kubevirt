@@ -3,8 +3,14 @@ package k8s
 import (
 	"context"
 	"fmt"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
+	v1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/portforward"
@@ -86,4 +92,38 @@ func WaitForResource(client *rest.RESTClient, namespace, resource, name, version
 	}
 
 	return event, nil
+}
+
+func WaitForJobCompletion(client v1.BatchV1Interface, ui packersdk.Ui, job *batchv1.Job, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
+	defer cancel()
+
+	watcher, err := client.Jobs(job.Namespace).Watch(ctx, metav1.ListOptions{
+		FieldSelector: labels.SelectorFromSet(map[string]string{
+			"metadata.name": job.Name,
+		}).String(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get job state %s/%s: %w", job.Namespace, job.Name, err)
+	}
+
+	for {
+		select {
+		case event, _ := <-watcher.ResultChan():
+			updatedJob, _ := event.Object.(*batchv1.Job)
+			for index, condition := range updatedJob.Status.Conditions {
+				if index == 0 {
+					ui.Message(fmt.Sprintf("condition '%s' changed to '%s'", condition.Type, condition.Status))
+				}
+				if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
+					return nil
+				} else if (condition.Type == batchv1.JobFailed || condition.Type == batchv1.JobFailureTarget) && condition.Status == corev1.ConditionTrue {
+					return fmt.Errorf("job condition changed to failed")
+				}
+			}
+
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for job to be completed")
+		}
+	}
 }

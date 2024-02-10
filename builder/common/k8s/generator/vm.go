@@ -8,10 +8,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
+	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	"packer-plugin-kubevirt/builder/common/utils"
+	"packer-plugin-kubevirt/builder/common/vm"
 	"path"
-	"strings"
 )
 
 //go:embed scripts/*
@@ -23,12 +23,13 @@ const (
 )
 
 type VirtualMachineOptions struct {
-	Name         string
-	Namespace    string
-	OsPreference string
-	ImageSource  ImageSource
-	Credentials  *AccessCredentials
-	DiskSpace    string
+	Name           string
+	Namespace      string
+	OsDistribution string
+	OsFamily       vm.OsFamily
+	ImageSource    ImageSource
+	Credentials    *AccessCredentials
+	DiskSpace      string
 }
 
 type AccessCredentials struct {
@@ -41,13 +42,6 @@ type ImageSource struct {
 	AWSAccessKeyId     string
 	AWSSecretAccessKey string
 }
-
-type OsFamily int32
-
-const (
-	Linux   OsFamily = 0
-	Windows          = 1
-)
 
 type SecretSuffix string
 
@@ -78,26 +72,19 @@ const (
 	VirtioDataVolumeSuffix DataVolumeSuffix = "virtio-drivers"
 )
 
-func buildDataVolumeName(vmName string, suffix DataVolumeSuffix) string {
+func BuildDataVolumeName(vmName string, suffix DataVolumeSuffix) string {
 	return fmt.Sprintf("%s-%s", vmName, suffix)
 }
 
-func getOSFamily(preference string) OsFamily {
-	if strings.Contains(strings.ToLower(preference), "windows") {
-		return Windows
-	}
-	return Linux
-}
-
-func buildProbeExecCommand(family OsFamily) []string {
+func buildProbeExecCommand(family vm.OsFamily) []string {
 	var command []string
 	switch family {
-	case Linux:
+	case vm.Linux:
 		command = []string{
 			"cloud-init",
 			"status",
 		}
-	case Windows:
+	case vm.Windows:
 		command = []string{
 			// NOTE: echo is 'acceptable' because qemu-ga is the last tool provisioned through sysprep.
 			"cmd",
@@ -113,18 +100,18 @@ func buildProbeExecCommand(family OsFamily) []string {
 	return command
 }
 
-func GenerateStartupScriptSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) (*corev1.Secret, error) {
+func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) (*corev1.Secret, error) {
 	data := make(map[string]string)
 	scriptsDir := "scripts"
 
 	var rawData []byte
 	var err error
-	switch getOSFamily(opts.OsPreference) {
-	case Linux:
+	switch vm.GetOSFamily(opts.OsDistribution) {
+	case vm.Linux:
 		filename := "cloud-init.yaml"
 		rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
 		data["userData"] = string(rawData)
-	case Windows:
+	case vm.Windows:
 		filename := "autounattend.xml"
 		rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
 		data[filename] = string(rawData)
@@ -138,7 +125,7 @@ func GenerateStartupScriptSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 			Name:      buildSecretName(opts.Name, StartupScriptSecretSuffix),
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(vm, kubevirtv1.VirtualMachineGroupVersionKind),
+				*metav1.NewControllerRef(virtualMachine, kubevirtv1.VirtualMachineGroupVersionKind),
 			},
 		},
 		StringData: data,
@@ -166,7 +153,7 @@ func GenerateS3CredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
 	password := opts.Credentials.Password
 	if opts.Credentials.Password == "" {
-		password = utils.GenerateRandomPassword(20)
+		password = common.GenerateRandomPassword(20)
 	}
 	data := map[string]string{
 		opts.Credentials.Username: password,
@@ -187,10 +174,9 @@ func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMa
 
 func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachine {
 	isRunning := true
-	osFamily := getOSFamily(opts.OsPreference)
-	disks := generateDisks(osFamily)
-	volumes := generateVolumes(osFamily, opts)
-	probeExecCommand := buildProbeExecCommand(osFamily)
+	disks := generateDisks(opts.OsFamily)
+	volumes := generateVolumes(opts)
+	probeExecCommand := buildProbeExecCommand(opts.OsFamily)
 
 	var accessCredentials []kubevirtv1.AccessCredential
 	if opts.Credentials != nil {
@@ -214,7 +200,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			},
 		}
 	}
-	dataVolumeTemplates := generateDataVolumeTemplates(osFamily, dataVolumeSource, opts.Name, opts.DiskSpace)
+	dataVolumeTemplates := generateDataVolumeTemplates(opts.OsFamily, dataVolumeSource, opts.Name, opts.DiskSpace)
 
 	return &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -225,7 +211,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			Running: &isRunning,
 			Preference: &kubevirtv1.PreferenceMatcher{
 				Kind: "VirtualMachineClusterPreference",
-				Name: opts.OsPreference,
+				Name: opts.OsDistribution,
 			},
 			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 				Spec: kubevirtv1.VirtualMachineInstanceSpec{
@@ -284,11 +270,11 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 	}
 }
 
-func generateDataVolumeTemplates(family OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSpace string) []kubevirtv1.DataVolumeTemplateSpec {
+func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSpace string) []kubevirtv1.DataVolumeTemplateSpec {
 	templates := []kubevirtv1.DataVolumeTemplateSpec{
 		{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: buildDataVolumeName(vmName, SourceDataVolumeSuffix),
+				Name: BuildDataVolumeName(vmName, SourceDataVolumeSuffix),
 			},
 			Spec: cdiv1beta1.DataVolumeSpec{
 				PVC: &corev1.PersistentVolumeClaimSpec{
@@ -306,10 +292,10 @@ func generateDataVolumeTemplates(family OsFamily, dvSource cdiv1beta1.DataVolume
 		},
 	}
 
-	if family == Windows {
+	if family == vm.Windows {
 		templates = append(templates, kubevirtv1.DataVolumeTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: buildDataVolumeName(vmName, VirtioDataVolumeSuffix),
+				Name: BuildDataVolumeName(vmName, VirtioDataVolumeSuffix),
 			},
 			Spec: cdiv1beta1.DataVolumeSpec{
 				PVC: &corev1.PersistentVolumeClaimSpec{
@@ -350,11 +336,11 @@ Tradeoffs:
  2. +: Parallelism
     -: Orchestration managed outside of Packer anyway needed for step 3 (1. run installs 2. run base images 3. run lab images)
 */
-func generateDisks(family OsFamily) []kubevirtv1.Disk {
+func generateDisks(family vm.OsFamily) []kubevirtv1.Disk {
 	var disks []kubevirtv1.Disk
 
 	switch family {
-	case Linux:
+	case vm.Linux:
 		disks = append(disks,
 			kubevirtv1.Disk{
 				Name: string(PrimaryVolumeDiskMapping),
@@ -372,7 +358,7 @@ func generateDisks(family OsFamily) []kubevirtv1.Disk {
 					},
 				},
 			})
-	case Windows:
+	case vm.Windows:
 		bootOrder := uint(1)
 		disks = append(disks,
 			// Disk C:
@@ -417,15 +403,15 @@ func generateDisks(family OsFamily) []kubevirtv1.Disk {
 	return disks
 }
 
-func generateVolumes(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.Volume {
+func generateVolumes(opts VirtualMachineOptions) []kubevirtv1.Volume {
 	primaryVolumeSource := kubevirtv1.VolumeSource{}
-	switch family {
-	case Linux:
+	switch opts.OsFamily {
+	case vm.Linux:
 		// Disk mounted with Linux cloud image
 		primaryVolumeSource.DataVolume = &kubevirtv1.DataVolumeSource{
-			Name: buildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
+			Name: BuildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
 		}
-	case Windows:
+	case vm.Windows:
 		// Disk empty and used as target by Windows install
 		primaryVolumeSource.EmptyDisk = &kubevirtv1.EmptyDiskSource{
 			Capacity: resource.MustParse(opts.DiskSpace),
@@ -439,8 +425,8 @@ func generateVolumes(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.V
 		},
 	}
 
-	switch family {
-	case Linux:
+	switch opts.OsFamily {
+	case vm.Linux:
 		volumes = append(volumes,
 			kubevirtv1.Volume{
 				Name: string(CloudInitVolumeDiskMapping),
@@ -453,13 +439,13 @@ func generateVolumes(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.V
 				},
 			},
 		)
-	case Windows:
+	case vm.Windows:
 		volumes = append(volumes,
 			kubevirtv1.Volume{
 				Name: string(IsoInstallVolumeDiskMapping),
 				VolumeSource: kubevirtv1.VolumeSource{
 					DataVolume: &kubevirtv1.DataVolumeSource{
-						Name: buildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
+						Name: BuildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
 					},
 				},
 			},
@@ -467,7 +453,7 @@ func generateVolumes(family OsFamily, opts VirtualMachineOptions) []kubevirtv1.V
 				Name: string(VirtioDriversVolumeDiskMapping),
 				VolumeSource: kubevirtv1.VolumeSource{
 					DataVolume: &kubevirtv1.DataVolumeSource{
-						Name: buildDataVolumeName(opts.Name, VirtioDataVolumeSuffix),
+						Name: BuildDataVolumeName(opts.Name, VirtioDataVolumeSuffix),
 					},
 				},
 			},

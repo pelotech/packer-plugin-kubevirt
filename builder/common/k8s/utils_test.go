@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/watch"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -20,7 +20,7 @@ func TestWaitForVirtualMachine(t *testing.T) {
 	name := "image-builder"
 	client, _ := GetKubevirtClient()
 
-	vm, _ := client.VirtualMachine(ns).Get(context.TODO(), name, &v1.GetOptions{})
+	vm, _ := client.VirtualMachine(ns).Get(context.TODO(), name, &metav1.GetOptions{})
 
 	conditionFunc := func(event watch.Event) (bool, error) {
 		vm, ok := event.Object.(*kubevirtv1.VirtualMachine)
@@ -49,7 +49,7 @@ func TestWaitForVirtualMachineExport(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Minute)
 	defer cancel()
 
-	watcher, _ := client.GeneratedKubeVirtClient().ExportV1alpha1().VirtualMachineExports(ns).Watch(ctx, v1.ListOptions{
+	watcher, _ := client.GeneratedKubeVirtClient().ExportV1alpha1().VirtualMachineExports(ns).Watch(ctx, metav1.ListOptions{
 		FieldSelector: labels.SelectorFromSet(map[string]string{
 			"metadata.name": name,
 		}).String(),

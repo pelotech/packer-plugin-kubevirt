@@ -10,10 +10,7 @@ import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
-	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"kubevirt.io/api/export/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
@@ -120,46 +117,12 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		return nil, true, true, fmt.Errorf("failed to create S3 uploader secret: %w", err)
 	}
 
-	err = p.waitForJobCompletion(ui, job, p.config.UploadTimeOut)
+	err = k8s.WaitForJobCompletion(p.virtClient.BatchV1(), ui, job, p.config.UploadTimeOut)
 	if err != nil {
-		return nil, true, true, fmt.Errorf("failed to get S3 uploader job successfully completed: %w", err)
+		return nil, true, true, fmt.Errorf("error with 'S3 uploader' job: %w", err)
 	}
 
 	return source, true, true, nil
-}
-
-func (p *PostProcessor) waitForJobCompletion(ui packersdk.Ui, job *batchv1.Job, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
-	defer cancel()
-
-	watcher, err := p.virtClient.BatchV1().Jobs(job.Namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: labels.SelectorFromSet(map[string]string{
-			"metadata.name": job.Name,
-		}).String(),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get S3 Uploader Job state %s/%s: %w", job.Namespace, job.Name, err)
-	}
-
-	for {
-		select {
-		case event, _ := <-watcher.ResultChan():
-			updatedJob, _ := event.Object.(*batchv1.Job)
-			for index, condition := range updatedJob.Status.Conditions {
-				if index == 0 {
-					ui.Message(fmt.Sprintf("condition '%s' changed to '%s'", condition.Type, condition.Status))
-				}
-				if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
-					return nil
-				} else if (condition.Type == batchv1.JobFailed || condition.Type == batchv1.JobFailureTarget) && condition.Status == corev1.ConditionTrue {
-					return fmt.Errorf("failed to upload export with S3 Uploader Job")
-				}
-			}
-
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for S3 Uploader Job to be completed")
-		}
-	}
 }
 
 func (p *PostProcessor) cleanupResources(ui packersdk.Ui, ns, name string) {
