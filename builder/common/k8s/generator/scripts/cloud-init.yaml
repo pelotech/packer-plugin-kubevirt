@@ -26,3 +26,7 @@ runcmd:
   - [ "systemctl", "enable", "xrdp" ]
   - [ "ufw", "allow", "3389" ]
   - [ "systemctl", "enable", "--now", "qemu-guest-agent" ]
+
+power_state:
+  mode: reboot
+  message: Rebooting after package installation.

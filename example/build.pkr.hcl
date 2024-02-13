@@ -15,8 +15,8 @@ locals {
         os_distribution    = "ubuntu"
         url                = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
         disk_space         = "10Gi"
-        deployment_timeout = "10m"
-        export_timeout     = "5m"
+        deployment_timeout = "15m"
+        export_timeout     = "10m"
       }
     ]
     windows = [

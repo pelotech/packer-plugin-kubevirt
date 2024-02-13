@@ -20,6 +20,7 @@ var scripts embed.FS
 const (
 	defaultNetworkName = "default"
 	virtioDriversURL   = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
+	defaultMacAddress  = "00:00:00:00:00:00"
 )
 
 type VirtualMachineOptions struct {
@@ -246,7 +247,8 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 							Disks: disks,
 							Interfaces: []kubevirtv1.Interface{
 								{
-									Name: defaultNetworkName,
+									Name:       defaultNetworkName,
+									MacAddress: defaultMacAddress,
 									InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
 										Masquerade: &kubevirtv1.InterfaceMasquerade{},
 									},
