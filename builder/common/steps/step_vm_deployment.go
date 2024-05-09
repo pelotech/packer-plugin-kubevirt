@@ -19,11 +19,10 @@ import (
 )
 
 type StepDeployVM struct {
-	KubeClient               client.Client
-	VirtClient               kubecli.KubevirtClient
-	KubernetesNodeAutoscaler k8s.NodeAutoscaler
-	VmOptions                generator.VirtualMachineOptions
-	VmDeploymentTimeOut      time.Duration
+	KubeClient          client.Client
+	VirtClient          kubecli.KubevirtClient
+	VmOptions           generator.VirtualMachineOptions
+	VmDeploymentTimeOut time.Duration
 }
 
 func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -32,9 +31,10 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	ns := s.VmOptions.Namespace
 	name := s.VmOptions.Name
 
-	err := s.bootstrapEnvironment(ns, name)
-	if err != nil {
-		err := fmt.Errorf("failed to bootstrap environment for Virtual Machine %s/%s: %s", ns, name, err)
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
+	_, err := s.VirtClient.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
+	if err != nil && !errors.IsAlreadyExists(err) {
+		err := fmt.Errorf("failed to create namespace for Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
 		ui.Error(err.Error())
 
@@ -128,33 +128,6 @@ func (s *StepDeployVM) waitForVirtualMachine(ui packer.Ui, vm *kubevirtv1.Virtua
 	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmDeploymentTimeOut, watchFunc)
 	if err != nil {
 		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", vm.Namespace, vm.Name, err)
-	}
-
-	return nil
-}
-
-func (s *StepDeployVM) bootstrapEnvironment(ns, name string) error {
-	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
-	_, err := s.VirtClient.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
-	if err != nil && !errors.IsAlreadyExists(err) {
-		return err
-	}
-
-	switch s.KubernetesNodeAutoscaler {
-	case k8s.KarpenterNodeAutoscaler:
-		nodePool := generator.GenerateNodePool()
-		err = s.KubeClient.Create(context.TODO(), nodePool)
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return err
-		}
-
-		job := generator.GenerateInitJob(ns, name, 2*time.Minute, k8s.KarpenterNodeAutoscaler)
-		_, err = s.VirtClient.BatchV1().Jobs(ns).Create(context.TODO(), job, metav1.CreateOptions{})
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return err
-		}
-	case k8s.DefaultNodeAutoscaler:
-		// Do nothing
 	}
 
 	return nil

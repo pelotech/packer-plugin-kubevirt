@@ -35,7 +35,6 @@ locals {
 source "kubevirt-iso" "linux" {
   kubernetes_name              = local.images.linux.0.name
   kubernetes_namespace         = var.kubernetes_namespace
-  kubernetes_node_autoscaler   = var.kubernetes_node_autoscaler # Optional, default to 'default' autoscaler
   kubevirt_os_preference       = local.images.linux.0.os_distribution
   vm_disk_space                = local.images.linux.0.disk_space
   vm_deployment_timeout        = local.images.linux.0.deployment_timeout # Optional, default to '10m'
@@ -70,13 +69,17 @@ source "kubevirt-iso" "windows" {
 build {
   sources = [
     "source.kubevirt-iso.linux",
-    #     "source.kubevirt-iso.windows"
+    # "source.kubevirt-iso.windows"
   ]
 
-  #   provisioner "ansible" {
-  #     playbook_file = "./playbook.yml"
-  #     roles_path    = "/path/to/your/roles"
-  #   }
+  provisioner "ansible" {
+    playbook_file = "${path.root}/ansible/playbook.yml"
+    galaxy_file   = "${path.root}/ansible/requirements.yaml"
+    extra_arguments = [
+      "--extra-vars",
+      "ansible_host=${var.ansible_host}"
+    ]
+  }
 
   post-processor "kubevirt-s3" {
     s3_bucket             = var.destination_aws_s3_bucket

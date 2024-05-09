@@ -35,7 +35,6 @@ type Config struct {
 	Comm                            communicator.Config `mapstructure:",squash"`
 	KubernetesName                  string              `mapstructure:"kubernetes_name"`
 	KubernetesNamespace             string              `mapstructure:"kubernetes_namespace"`
-	KubernetesNodeAutoscaler        k8s.NodeAutoscaler  `mapstructure:"kubernetes_node_autoscaler" required:"false"`
 	KubevirtOsPreference            string              `mapstructure:"kubevirt_os_preference"`
 	VirtualMachineDiskSpace         string              `mapstructure:"vm_disk_space"`
 	VirtualMachineDeploymentTimeOut time.Duration       `mapstructure:"vm_deployment_timeout" required:"false"`
@@ -71,10 +70,6 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	// 4. Any computed values (if needed)
 	if buildercommon.IsReservedPort(b.config.Comm.SSHPort) || buildercommon.IsReservedPort(b.config.Comm.WinRMPort) {
 		return nil, nil, fmt.Errorf("the local port for communicating with the remote machine is reserved - please use a port above 1024")
-	}
-
-	if b.config.KubernetesNodeAutoscaler == "" {
-		b.config.KubernetesNodeAutoscaler = k8s.DefaultNodeAutoscaler
 	}
 
 	if b.config.VirtualMachineDeploymentTimeOut == 0 {
@@ -127,9 +122,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
-			VirtClient:               b.virtClient,
-			KubeClient:               b.kubeClient,
-			KubernetesNodeAutoscaler: b.config.KubernetesNodeAutoscaler,
+			VirtClient: b.virtClient,
+			KubeClient: b.kubeClient,
 			VmOptions: generator.VirtualMachineOptions{
 				Name:           b.config.KubernetesName,
 				Namespace:      b.config.KubernetesNamespace,
@@ -177,9 +171,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		&commonsteps.StepProvision{},
 		&stepDef.StepExportVM{
-			VirtClient:               b.virtClient,
-			VmExportTimeOut:          b.config.VirtualMachineExportTimeOut,
-			KubernetesNodeAutoscaler: b.config.KubernetesNodeAutoscaler,
+			VirtClient:      b.virtClient,
+			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
 		},
 	}
 

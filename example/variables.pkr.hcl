@@ -3,16 +3,6 @@ variable "kubernetes_namespace" {
   type        = string
 }
 
-variable "kubernetes_node_autoscaler" {
-  description = "Kubernetes node autoscaler used to schedule node hosting provisioning operations"
-  type        = string
-
-  validation {
-    condition     = contains(["default", "karpenter"], var.kubernetes_node_autoscaler)
-    error_message = "The 'kubernetes_node_autoscaler' value must be one of the following: default, karpenter."
-  }
-}
-
 variable "source_aws_access_key_id" {
   description = "AWS Access Key ID for S3 bucket containing VM images (Empty will skip adding credentials)"
   type        = string
@@ -25,6 +15,11 @@ variable "source_aws_secret_access_key" {
   type        = string
   sensitive   = true
   default     = ""
+}
+
+variable "ansible_host" {
+  description = "Target host defined in Ansible Playbook used."
+  type        = string
 }
 
 variable "destination_aws_s3_bucket" {

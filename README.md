@@ -1,39 +1,39 @@
-# Packer Plugin Scaffolding
+# Packer Plugin KubeVirt
 
-This repository is a template for a Packer multi-component plugin. It is intended as a starting point for creating Packer plugins, containing:
+This repository is a Packer
 - A builder ([builder/scaffolding](builder/windows))
-- A provisioner ([provisioner/scaffolding](provisioner/kubevirt))
-- A post-processor ([post-processor/scaffolding](post-processor/kubevirt))
-- A data source ([datasource/scaffolding](datasource/kubevirt))
+- Post-processors ([post-processor/scaffolding](post-processor/kubevirt))
+  - S3 Export
 - Docs ([docs](docs))
 - A working example ([example](example))
-
-These folders contain boilerplate code that you will need to edit to create your own Packer multi-component plugin.
-A full guide to creating Packer plugins can be found at [Extending Packer](https://www.packer.io/docs/plugins/creation).
 
 In this repository you will also find a pre-defined GitHub Action configuration for the release workflow
 (`.goreleaser.yml` and `.github/workflows/release.yml`). The release workflow configuration makes sure the GitHub
 release artifacts are created with the correct binaries and naming conventions.
 
-Please see the [GitHub template repository documentation](https://docs.github.com/en/free-pro-team@latest/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template)
-for how to create a new repository from this template on GitHub.
+## Build the plugin
 
-## Packer plugin projects
+```shell
+go build .
+```
+## Local installation of the plugin
 
-Here's a non exaustive list of Packer plugins that you can checkout:
+```shell
+packer plugins install --path ./packer-plugin-kubevirt "github.com/pelotech/kubevirt"
+```
 
-* [github.com/hashicorp/packer-plugin-docker](https://github.com/hashicorp/packer-plugin-docker)
-* [github.com/exoscale/packer-plugin-exoscale](https://github.com/exoscale/packer-plugin-exoscale)
-* [github.com/sylviamoss/packer-plugin-comment](https://github.com/sylviamoss/packer-plugin-comment)
-* [github.com/hashicorp/packer-plugin-hashicups](https://github.com/hashicorp/packer-plugin-hashicups)
+## Run the plugin
 
-Looking at their code will give you good examples.
+```shell
+# If needed, the arg '-debug' will pause the process between each step
+PACKER_LOG=1 packer build -debug ./example
+```
 
 ## Running Acceptance Tests
 
 Make sure to install the plugin with `go build .` and to have Packer installed locally.
-Then source the built binary to the plugin path with `cp packer-plugin-scaffolding ~/.packer.d/plugins/packer-plugin-scaffolding`
-Once everything needed is set up, run:
+Then source the built binary to the plugin path with `cp packer-plugin-kubevirt ~/.packer.d/plugins/packer-plugin-kubevirt`
+or using `packer plugins install`. Once everything needed is set up, run:
 ```
 PACKER_ACC=1 go test -count 1 -v ./... -timeout=120m
 ```
@@ -62,8 +62,6 @@ plugin as a Packer integration refer to the [Developing Plugins](https://develop
 
 # Requirements
 
--	[packer-plugin-sdk](https://github.com/hashicorp/packer-plugin-sdk) >= v0.2.9
--	[Go](https://golang.org/doc/install) >= 1.20
-
-## Packer Compatibility
-This scaffolding template is compatible with Packer >= v1.7.0
+-	[packer-plugin-sdk](https://github.com/hashicorp/packer-plugin-sdk) >= v0.5.2
+-	[Go](https://golang.org/doc/install) >= 1.21
+-   Packer >= >= v1.10
