@@ -4,6 +4,7 @@ package iso
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	awsv1beta1 "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/hashicorp/hcl/v2/hcldec"
@@ -14,8 +15,11 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	gossh "golang.org/x/crypto/ssh"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"kubevirt.io/client-go/kubecli"
+	"log"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
@@ -23,6 +27,7 @@ import (
 	"packer-plugin-kubevirt/builder/common/vm"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/karpenter/pkg/apis/v1beta1"
+	"strings"
 	"time"
 )
 
@@ -35,13 +40,17 @@ type Config struct {
 	Comm                            communicator.Config `mapstructure:",squash"`
 	KubernetesName                  string              `mapstructure:"kubernetes_name"`
 	KubernetesNamespace             string              `mapstructure:"kubernetes_namespace"`
+	KubernetesNodeSelectors         map[string]string   `mapstructure:"kubernetes_node_selectors"`
+	KubernetesTolerations           []map[string]string `mapstructure:"kubernetes_tolerations"`
 	KubevirtOsPreference            string              `mapstructure:"kubevirt_os_preference"`
-	VirtualMachineDiskSpace         string              `mapstructure:"vm_disk_space"`
-	VirtualMachineDeploymentTimeOut time.Duration       `mapstructure:"vm_deployment_timeout" required:"false"`
-	VirtualMachineExportTimeOut     time.Duration       `mapstructure:"vm_export_timeout" required:"false"`
 	SourceUrl                       string              `mapstructure:"source_url"`
 	SourceAWSAccessKeyId            string              `mapstructure:"source_aws_access_key_id" required:"false"`
 	SourceAWSSecretAccessKey        string              `mapstructure:"source_aws_secret_access_key" required:"false"`
+	VirtualMachineDiskSpace         string              `mapstructure:"vm_disk_space"`
+	VirtualMachineDeploymentTimeOut time.Duration       `mapstructure:"vm_deployment_timeout" required:"false"`
+	VirtualMachineExportTimeOut     time.Duration       `mapstructure:"vm_export_timeout" required:"false"`
+	VirtualMachineLinuxCloudInit    string              `mapstructure:"vm_linux_cloud_init" required:"false"`
+	VirtualMachineWindowsSysprep    string              `mapstructure:"vm_windows_sysprep" required:"false"`
 }
 
 type Builder struct {
@@ -111,6 +120,21 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	return generatedVars, warnings, nil
 }
 
+func decodeTolerations(rawTolerations []map[string]string) []v1.Toleration {
+	var tolerations []v1.Toleration
+	for _, rawToleration := range rawTolerations {
+		var toleration v1.Toleration
+		serializedToleration, _ := json.Marshal(rawToleration)
+		reader := strings.NewReader(string(serializedToleration))
+		err := yaml.NewYAMLOrJSONDecoder(reader, 4096).Decode(&toleration)
+		if err != nil {
+			log.Printf("Error deserializing tolerations: %s", err)
+		}
+		tolerations = append(tolerations, toleration)
+	}
+	return tolerations
+}
+
 func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
 	state := new(multistep.BasicStateBag)
 	appContext := &buildercommon.AppContext{State: state}
@@ -127,14 +151,20 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			VmOptions: generator.VirtualMachineOptions{
 				Name:           b.config.KubernetesName,
 				Namespace:      b.config.KubernetesNamespace,
+				NodeSelectors:  b.config.KubernetesNodeSelectors,
+				Tolerations:    decodeTolerations(b.config.KubernetesTolerations),
 				OsDistribution: b.config.KubevirtOsPreference,
 				OsFamily:       osFamily,
+				DiskSpace:      b.config.VirtualMachineDiskSpace,
 				ImageSource: generator.ImageSource{
 					URL:                b.config.SourceUrl,
 					AWSAccessKeyId:     b.config.SourceAWSAccessKeyId,
 					AWSSecretAccessKey: b.config.SourceAWSSecretAccessKey,
 				},
-				DiskSpace: b.config.VirtualMachineDiskSpace,
+				UserProvisioning: generator.UserProvisioning{
+					CloudInit: b.config.VirtualMachineLinuxCloudInit,
+					Sysprep:   b.config.VirtualMachineWindowsSysprep,
+				},
 			},
 			VmDeploymentTimeOut: b.config.VirtualMachineDeploymentTimeOut,
 		},

@@ -8,7 +8,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	"packer-plugin-kubevirt/builder/common/k8s"
 	"path"
 )
 
@@ -35,16 +34,8 @@ func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, pvcName string) *batchv1.
 			TTLSecondsAfterFinished: pointer.Int32(30),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					NodeSelector: map[string]string{
-						k8s.ImageBuilderTaintKey: k8s.ImageBuilderTaintValue,
-					},
-					Tolerations: []corev1.Toleration{
-						{
-							Key:      k8s.ImageBuilderTaintKey,
-							Operator: corev1.TolerationOpEqual,
-							Value:    k8s.ImageBuilderTaintValue,
-						},
-					},
+					NodeSelector:  vm.Spec.Template.Spec.NodeSelector,
+					Tolerations:   vm.Spec.Template.Spec.Tolerations,
 					RestartPolicy: corev1.RestartPolicyNever,
 					SecurityContext: &corev1.PodSecurityContext{
 						RunAsNonRoot: pointer.Bool(false),
@@ -58,7 +49,7 @@ func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, pvcName string) *batchv1.
 					Containers: []corev1.Container{
 						{
 							Name:  "libguestfs",
-							Image: "quay.io/kubevirt/libguestfs-tools:v1.1.1",
+							Image: "quay.io/kubevirt/libguestfs-tools:v1.2.0",
 							Command: []string{
 								"virt-sysprep",
 								"--verbose",

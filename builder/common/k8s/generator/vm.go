@@ -9,7 +9,6 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"packer-plugin-kubevirt/builder/common"
-	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/vm"
 	"path"
 )
@@ -24,13 +23,16 @@ const (
 )
 
 type VirtualMachineOptions struct {
-	Name           string
-	Namespace      string
-	OsDistribution string
-	OsFamily       vm.OsFamily
-	ImageSource    ImageSource
-	Credentials    *AccessCredentials
-	DiskSpace      string
+	Name             string
+	Namespace        string
+	NodeSelectors    map[string]string
+	Tolerations      []corev1.Toleration
+	OsDistribution   string
+	OsFamily         vm.OsFamily
+	DiskSpace        string
+	ImageSource      ImageSource
+	UserProvisioning UserProvisioning
+	Credentials      *AccessCredentials
 }
 
 type AccessCredentials struct {
@@ -42,6 +44,11 @@ type ImageSource struct {
 	URL                string
 	AWSAccessKeyId     string
 	AWSSecretAccessKey string
+}
+
+type UserProvisioning struct {
+	CloudInit string
+	Sysprep   string
 }
 
 type SecretSuffix string
@@ -109,13 +116,21 @@ func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts
 	var err error
 	switch vm.GetOSFamily(opts.OsDistribution) {
 	case vm.Linux:
-		filename := "cloud-init.yaml"
-		rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
-		data["userData"] = string(rawData)
+		if opts.UserProvisioning.CloudInit != "" {
+			data["userData"] = opts.UserProvisioning.CloudInit
+		} else {
+			filename := "cloud-init.yaml"
+			rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
+			data["userData"] = string(rawData)
+		}
 	case vm.Windows:
-		filename := "autounattend.xml"
-		rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
-		data[filename] = string(rawData)
+		if opts.UserProvisioning.Sysprep != "" {
+			data["autounattend.xml"] = string(rawData)
+		} else {
+			filename := "autounattend.xml"
+			rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
+			data[filename] = string(rawData)
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to read startup script file: %s", err)
@@ -216,16 +231,8 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			},
 			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 				Spec: kubevirtv1.VirtualMachineInstanceSpec{
-					NodeSelector: map[string]string{
-						k8s.ImageBuilderTaintKey: k8s.ImageBuilderTaintValue,
-					},
-					Tolerations: []corev1.Toleration{
-						{
-							Key:      k8s.ImageBuilderTaintKey,
-							Operator: corev1.TolerationOpEqual,
-							Value:    k8s.ImageBuilderTaintValue,
-						},
-					},
+					NodeSelector: opts.NodeSelectors,
+					Tolerations:  opts.Tolerations,
 					ReadinessProbe: &kubevirtv1.Probe{
 						Handler: kubevirtv1.Handler{
 							Exec: &corev1.ExecAction{

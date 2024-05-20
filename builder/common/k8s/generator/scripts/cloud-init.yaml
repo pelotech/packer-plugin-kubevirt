@@ -17,7 +17,7 @@ system_info:
 package_update: true
 package_upgrade: true
 packages:
-  - ubuntu-desktop-minimal
+#  - ubuntu-desktop-minimal
   - xrdp
   - qemu-guest-agent
 
