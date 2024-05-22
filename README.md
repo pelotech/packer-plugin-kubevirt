@@ -1,11 +1,14 @@
-# Packer Plugin KubeVirt
+# Packer Plugin 'KubeVirt'
 
-This repository is a Packer
-- A builder ([builder/scaffolding](builder/windows))
-- Post-processors ([post-processor/scaffolding](post-processor/kubevirt))
-  - S3 Export
-- Docs ([docs](docs))
-- A working example ([example](example))
+This repository contains the following sections:
+- Builders:
+  - [ISO builder](builder/iso)
+  - IMG builder _(to be implemented)_
+- Post-processors
+  - [S3 Export](post-processor/s3)
+  - OCI Export _(to be implemented)_
+- [Docs](docs)
+- [A working example](example)
 
 In this repository you will also find a pre-defined GitHub Action configuration for the release workflow
 (`.goreleaser.yml` and `.github/workflows/release.yml`). The release workflow configuration makes sure the GitHub
@@ -62,6 +65,6 @@ plugin as a Packer integration refer to the [Developing Plugins](https://develop
 
 # Requirements
 
--	[packer-plugin-sdk](https://github.com/hashicorp/packer-plugin-sdk) >= v0.5.2
--	[Go](https://golang.org/doc/install) >= 1.21
+-	[packer-plugin-sdk](https://github.com/hashicorp/packer-plugin-sdk) >= v0.5.3
+-	[Go](https://golang.org/doc/install) >= 1.22
 -   Packer >= >= v1.10

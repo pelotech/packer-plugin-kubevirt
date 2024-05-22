@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	awsv1beta1 "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer-plugin-sdk/common"
 	"github.com/hashicorp/packer-plugin-sdk/communicator"
@@ -26,7 +25,6 @@ import (
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/vm"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 	"strings"
 	"time"
 )
@@ -73,13 +71,7 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 		return nil, nil, err
 	}
 
-	// 1. Align logger log level on user bool input 'b.config.PackerDebug'	INFO/DEBUG
-	// 2. Validate configuration fields
-	// 3. Validate credentials (e.g. k8s clients)
-	// 4. Any computed values (if needed)
-	if buildercommon.IsReservedPort(b.config.Comm.SSHPort) || buildercommon.IsReservedPort(b.config.Comm.WinRMPort) {
-		return nil, nil, fmt.Errorf("the local port for communicating with the remote machine is reserved - please use a port above 1024")
-	}
+	// TODO: Align logger log level on user bool input 'b.config.PackerDebug'	INFO/DEBUG
 
 	if b.config.VirtualMachineDeploymentTimeOut == 0 {
 		b.config.VirtualMachineDeploymentTimeOut = 10 * time.Minute
@@ -93,6 +85,19 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 		b.config.Comm.Type = "ssh"
 		warnings = append(warnings, "no communication method was specified, so SSH will be used by default to connect to the machine.")
 	}
+	commType := strings.ToLower(b.config.Comm.Type)
+	if commType == "ssh" && b.config.Comm.SSHPort == 0 {
+		b.config.Comm.SSHPort = 2222
+	}
+	if commType == "winrm" && b.config.Comm.WinRMPort == 0 {
+		b.config.Comm.WinRMPort = 5389
+	}
+	if buildercommon.IsReservedPort(b.config.Comm.SSHPort) || buildercommon.IsReservedPort(b.config.Comm.WinRMPort) {
+		return nil, nil, fmt.Errorf("the local port for communicating with the remote machine is reserved - please use a port above 1024")
+	}
+	if b.config.Comm.WinRMTimeout == 0 {
+		b.config.Comm.WinRMTimeout = 30 * time.Second
+	}
 
 	b.virtClient, err = k8s.GetKubevirtClient()
 	if err != nil {
@@ -101,8 +106,7 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 
 	scheme := runtime.NewScheme()
 	builders := []runtime.SchemeBuilder{
-		awsv1beta1.SchemeBuilder,
-		v1beta1.SchemeBuilder,
+		// Add your `SchemeBuilder` containing CRDs (if needed)
 	}
 	for _, builder := range builders {
 		err = builder.AddToScheme(scheme)

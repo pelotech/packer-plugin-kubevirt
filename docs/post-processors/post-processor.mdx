@@ -1,4 +1,4 @@
-Type: `scaffolding`
+Type: `s3`
 
 <!--
   Include a short description about the post-processor. This is a good place
@@ -6,14 +6,18 @@ Type: `scaffolding`
   be helpful to a user. See https://www.packer.io/docs/provisioners/null
 -->
 
-The scaffolding post-processor is used to export Packer Scaffolding builds.
+The S3 post-processor is used to export Packer Scaffolding to an S3 bucket.
 
 
 <!-- Post-Processor Configuration Fields -->
 
 **Required**
 
-- `mock` (string) - The output path where to save exported build to.
+- `s3_bucket` (string) -  AWS S3 Bucket where exported VM images are stored
+
+- `s3_key_prefix` (string) -  AWS S3 Key prefix for all the exported VM images
+
+- `aws_region` (string) -  AWS region used to initialize the AWS CLI uploading the exported VM image
 
 <!--
   Optional Configuration Fields
@@ -25,6 +29,14 @@ The scaffolding post-processor is used to export Packer Scaffolding builds.
 
 **Optional**
 
+- `aws_access_key_id` (string) -  AWS Access Key ID for S3 bucket containing VM images
+Sensitive field - Defaults to empty string (will skip adding credentials)
+
+- `aws_secret_access_key` (string) -  AWS Secret Access Key for S3 bucket containing VM images
+Sensitive field - Defaults to empty string (will skip adding credentials)
+
+- `upload_timeout` (string) -  Upload timeout duration
+Defaults to `10m`
 
 <!--
   A basic example on the usage of the post-processor. Multiple examples
@@ -35,16 +47,21 @@ The scaffolding post-processor is used to export Packer Scaffolding builds.
 
 
 ```hcl
- source "scaffolding" "example" {
-   mock = "jay"
+ source "kubevirt-iso" "linux" {
+  ...
  }
 
- build {
-   sources = ["source.scaffolding.example"]
+build {
+  sources = ["source.kubevirt-iso.linux"]
 
-   post-processor "scaffolding" {
-     mock = "builds/scaffolding.box"
-   }
- }
+  post-processor "kubevirt-s3" {
+    s3_bucket             = "virtual-machine-disk-images"
+    s3_key_prefix         = "kubevirt"
+    aws_region            = "us-east-1"
+    aws_access_key_id     = "AWS_ACCESS_KEY_ID"
+    aws_secret_access_key = "AWS_SECRET_ACCESS_KEY"
+    upload_timeout        = "10m"                         # Optional
+  }
+}
 ```
 

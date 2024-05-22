@@ -11,3 +11,7 @@ updates:
       interval: "daily"
     allow:
       - dependency-name: "github.com/hashicorp/packer-plugin-sdk"
+      - dependency-name: "github.com/hashicorp/hcl/v2"
+      - dependency-name: "kubevirt.io/api"
+      - dependency-name: "kubevirt.io/client-go"
+      - dependency-name: "kubevirt.io/containerized-data-importer-api"

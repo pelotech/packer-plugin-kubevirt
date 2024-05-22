@@ -65,7 +65,14 @@ source "kubevirt-iso" "windows" {
   kubernetes_node_selectors = {
     "kubevirt.io/schedulable" = "true"
   }
-  kubernetes_node_autoscaler   = var.kubernetes_node_autoscaler
+  kubernetes_tolerations = [
+    {
+      key      = "pelo.tech/kvm"
+      operator = "Equal"
+      value    = "true"
+      effect   = "NoSchedule"
+    }
+  ]
   kubevirt_os_preference       = local.images.windows.0.os_distribution
   vm_disk_space                = local.images.windows.0.disk_space
   vm_windows_sysprep           = file("/Users/chomatdam/IdeaProjects/pelotech/packer-plugin-kubevirt/builder/common/k8s/generator/scripts/autounattend.xml")
@@ -84,7 +91,7 @@ source "kubevirt-iso" "windows" {
 build {
   sources = [
     "source.kubevirt-iso.linux",
-    # "source.kubevirt-iso.windows"
+    "source.kubevirt-iso.windows"
   ]
 
   #   provisioner "ansible" {

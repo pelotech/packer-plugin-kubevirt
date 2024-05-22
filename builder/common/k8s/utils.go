@@ -24,9 +24,7 @@ import (
 )
 
 const (
-	ImageBuilderTaintKey   = "pelo.tech/uki-labs"
-	ImageBuilderTaintValue = "builder"
-	PortFowardTimeout      = 5 * time.Second
+	PortFowardTimeout = 5 * time.Second
 )
 
 func RunAsyncPortForward(client kubecli.KubevirtClient, podName, namespace string, ports []string) (chan struct{}, error) {

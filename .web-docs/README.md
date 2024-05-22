@@ -16,7 +16,7 @@ packer {
   required_plugins {
     name = {
       # source represents the GitHub URI to the plugin repository without the `packer-plugin-` prefix.
-      source  = "github.com/organization/name"
+      source  = "github.com/pelotech/kubevirt"
       version = ">=0.0.1"
     }
   }
@@ -26,16 +26,16 @@ packer {
 Alternatively, you can use `packer plugins install` to manage installation of this plugin.
 
 ```sh
-$ packer plugins install github.com/organization/plugin-name
+$ packer plugins install github.com/pelotech/packer-plugin-kubevirt
 ```
 
 ### Components
 
-The Scaffolding plugin is intended as a starting point for creating Packer plugins
+The KubeVirt plugin is intended as a starting point for creating Packer plugins
 
 #### Builders
 
-- [builder](/packer/integrations/hashicorp/scaffolding/latest/components/builder/builder-name) - The scaffolding builder is used to create endless Packer
+- [builder](/packer/integrations/hashicorp/scaffolding/latest/components/builder/builder-name) - The ISO builder is used to create endless Packer
   plugins using a consistent plugin structure.
 
 #### Provisioners
@@ -47,9 +47,3 @@ The Scaffolding plugin is intended as a starting point for creating Packer plugi
 
 - [post-processor](/packer/integrations/hashicorp/scaffolding/latest/components/post-processor/postprocessor-name) - The scaffolding post-processor is used to
   export scaffolding builds.
-
-#### Data Sources
-
-- [data source](/packer/integrations/hashicorp/scaffolding/latest/components/datasource/datasource-name) - The scaffolding data source is used to
-  export scaffolding data.
-
