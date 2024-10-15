@@ -290,7 +290,7 @@ func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVol
 					AccessModes: []corev1.PersistentVolumeAccessMode{
 						corev1.ReadWriteOnce,
 					},
-					Resources: corev1.ResourceRequirements{
+					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSpace),
 						},
@@ -311,7 +311,7 @@ func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVol
 					AccessModes: []corev1.PersistentVolumeAccessMode{
 						corev1.ReadWriteOnce,
 					},
-					Resources: corev1.ResourceRequirements{
+					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: resource.MustParse("1Gi"),
 						},

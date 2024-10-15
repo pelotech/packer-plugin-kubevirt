@@ -5,8 +5,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"kubevirt.io/api/export/v1alpha1"
-	exportv1 "kubevirt.io/api/export/v1alpha1"
+	exportv1 "kubevirt.io/api/export/v1beta1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/steps"
 	"path"
@@ -23,8 +22,9 @@ const (
 )
 
 type S3UploaderOptions struct {
-	Name      string
-	Namespace string
+	Name               string
+	Namespace          string
+	ServiceAccountName *string
 
 	ExportServerUrl         string
 	ExportServerToken       string
@@ -33,12 +33,22 @@ type S3UploaderOptions struct {
 	S3BucketName string
 	S3KeyPrefix  string
 
-	AWSAccessKeyId     string
-	AWSSecretAccessKey string
+	AWSAccessKeyId     *string
+	AWSSecretAccessKey *string
 	AWSRegion          string
 }
 
 func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.Secret {
+	stringData := map[string]string{
+		"AWS_REGION":        opts.AWSRegion,
+		exportTokenEnvVar:   opts.ExportServerToken,
+		exportServerPEMCert: opts.ExportServerCertificate,
+	}
+	if opts.AWSAccessKeyId != nil || opts.AWSSecretAccessKey != nil {
+		stringData["AWS_ACCESS_KEY_ID"] = *opts.AWSAccessKeyId
+		stringData["AWS_SECRET_ACCESS_KEY"] = *opts.AWSSecretAccessKey
+	}
+
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      buildJobSecretName(opts.Name),
@@ -47,13 +57,7 @@ func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.
 				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job")),
 			},
 		},
-		StringData: map[string]string{
-			"AWS_ACCESS_KEY_ID":     opts.AWSAccessKeyId,
-			"AWS_SECRET_ACCESS_KEY": opts.AWSSecretAccessKey,
-			"AWS_REGION":            opts.AWSRegion,
-			exportTokenEnvVar:       opts.ExportServerToken,
-			exportServerPEMCert:     opts.ExportServerCertificate,
-		},
+		StringData: stringData,
 	}
 }
 
@@ -61,7 +65,7 @@ func buildJobSecretName(name string) string {
 	return fmt.Sprintf("%s-%s", name, jobSecretSuffix)
 }
 
-func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
+func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
 	filename := fmt.Sprintf("%s.img.gz", opts.Name)
 
 	return &batchv1.Job{
@@ -75,10 +79,11 @@ func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3Uploade
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
+					ServiceAccountName: *opts.ServiceAccountName,
 					InitContainers: []corev1.Container{
 						{
 							Name:  "download",
-							Image: "curlimages/curl:8.6.0",
+							Image: "curlimages/curl:8.10.1",
 							Command: []string{
 								"/bin/sh",
 								"-c",
@@ -116,7 +121,7 @@ func GenerateS3UploaderJob(export *v1alpha1.VirtualMachineExport, opts S3Uploade
 					Containers: []corev1.Container{
 						{
 							Name:  "upload",
-							Image: "amazon/aws-cli:2.15.17",
+							Image: "amazon/aws-cli:2.18.6",
 							Command: []string{
 								"/bin/sh",
 								"-c",

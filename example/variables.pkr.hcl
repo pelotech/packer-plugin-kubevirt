@@ -17,10 +17,10 @@ variable "source_aws_secret_access_key" {
   default     = ""
 }
 
-variable "ansible_host" {
-  description = "Target host defined in Ansible Playbook used."
-  type        = string
-}
+# variable "ansible_host" {
+#   description = "Target host defined in Ansible Playbook used."
+#   type        = string
+# }
 
 variable "destination_aws_s3_bucket" {
   description = "AWS S3 Bucket where exported VM images are stored"
@@ -38,16 +38,25 @@ variable "destination_aws_s3_key_prefix" {
   }
 }
 
-variable "destination_aws_access_key_id" {
-  description = "AWS Access Key ID for S3 bucket containing VM images (Empty will skip adding credentials)"
+variable "destination_service_account_name" {
+  description = "Service Account Name with S3 bucket permissions to write disk images to it (recommended)"
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "destination_aws_access_key_id" {
+  description = "AWS Access Key ID for S3 bucket containing VM images (static credentials are not recommended)"
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 variable "destination_aws_secret_access_key" {
-  description = "AWS Secret Access Key for S3 bucket containing VM images (Empty will skip adding credentials)"
+  description = "AWS Secret Access Key for S3 bucket containing VM images (static credentials are not recommended)"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "destination_aws_region" {

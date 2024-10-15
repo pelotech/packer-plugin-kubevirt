@@ -208,6 +208,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			VirtClient:      b.virtClient,
 			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
 		},
+		&stepDef.StepConvertVM{},
 	}
 
 	// Run!

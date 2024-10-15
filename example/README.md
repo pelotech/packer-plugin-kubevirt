@@ -8,7 +8,7 @@ The folder can contain multiple HCL2 compatible files. The action will execute P
 running `packer init -upgrade .` and `packer build .`.
 
 If the plugin requires authentication, the configuration should be provided via GitHub Secrets and set as environment
-variables in the [test-plugin-example.yml](/.github/workflows/test-plugin-example.yml) file. Example:
+variables in the [test-plugin-example.yml](/.github/workflows/test-plugin-kubevirt.yml) file. Example:
 
 ```yml
   - name: Build

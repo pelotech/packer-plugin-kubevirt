@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	exportv1 "kubevirt.io/api/export/v1alpha1"
+	exportv1 "kubevirt.io/api/export/v1beta1"
 	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
@@ -71,7 +71,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 
 	ui.Say(fmt.Sprintf("creating Virtual Machine Export %s/%s...", vm.Namespace, vm.Name))
-	
+
 	export, err := s.createExport(ui, vm)
 	if err != nil {
 		err := fmt.Errorf("failed to create Virtual Machine Export %s/%s: %s", vm.Namespace, vm.Name, err)

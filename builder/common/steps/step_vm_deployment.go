@@ -43,7 +43,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 	ui.Say(fmt.Sprintf("creating Virtual Machine %s/%s...", ns, name))
 	vm := generator.GenerateVirtualMachine(s.VmOptions)
-	vm, err = s.VirtClient.VirtualMachine(ns).Create(context.TODO(), vm)
+	vm, err = s.VirtClient.VirtualMachine(ns).Create(context.TODO(), vm, metav1.CreateOptions{})
 	if err != nil {
 		err := fmt.Errorf("failed to create Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
@@ -114,13 +114,12 @@ func (s *StepDeployVM) waitForVirtualMachine(ui packer.Ui, vm *kubevirtv1.Virtua
 		if !ok {
 			return false, fmt.Errorf("unexpected type for %v", event.Object)
 		}
-
 		for index, condition := range vm.Status.Conditions {
-			if index == 0 {
-				ui.Message(fmt.Sprintf("condition '%s' changed to '%s'", condition.Type, condition.Status))
-			}
 			if condition.Type == kubevirtv1.VirtualMachineReady && condition.Status == corev1.ConditionTrue {
 				return true, nil
+			} else if index == len(vm.Status.Conditions)-1 {
+				ui.Message(fmt.Sprintf("condition '%s' is '%s'", condition.Type, condition.Status))
+				ui.Message(fmt.Sprintf("message: %s", vm.Status.Conditions[index].Message))
 			}
 		}
 		return false, nil
@@ -142,7 +141,7 @@ func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 	}
 
 	propagationPolicy := metav1.DeletePropagationForeground
-	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, &metav1.DeleteOptions{
+	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, metav1.DeleteOptions{
 		PropagationPolicy: &propagationPolicy,
 	})
 	appContext.GetPackerUi().Message(fmt.Sprintf("Virtual Machine %s/%s has been deleted", vm.Namespace, vm.Name))

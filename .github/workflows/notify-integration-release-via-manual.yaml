@@ -12,6 +12,7 @@ on:
         description: "A branch or SHA"
         default: 'main'
         required: false
+
 jobs:
   notify-release:
     runs-on: ubuntu-latest
@@ -20,10 +21,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch }}
+
       # Ensure that Docs are Compiled
       - uses: actions/setup-go@v5
       - shell: bash
         run: make generate
+
       - shell: bash
         run: |
           if [[ -z "$(git status -s)" ]]; then
@@ -42,9 +45,9 @@ jobs:
       - name: Notify Release
         uses: ./integration-release-action
         with:
-          # The integration identifier will be used by the Packer team to register the integration
+          # The Packer team will use the integration identifier to register the integration; 
           # the expected format is packer/<GitHub Org Name>/<plugin-name>
-          integration_identifier: "packer/pelotech/packer-plugin-kubevirt"
+          integration_identifier: "packer/pelotech/kubevirt"
           release_version: ${{ github.event.inputs.version }}
           release_sha: ${{ github.event.inputs.branch }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

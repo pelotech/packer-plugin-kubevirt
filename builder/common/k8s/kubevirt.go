@@ -18,8 +18,10 @@ func GetKubevirtClient() (kubecli.KubevirtClient, error) {
 	var client kubecli.KubevirtClient
 	var err error
 
-	kubeconfig := os.Getenv(clientcmd.RecommendedConfigPathEnvVar)
-	if kubeconfig != "" {
+	_, ciEnvExists := os.LookupEnv("CI")
+	_, configEnvExists := os.LookupEnv(clientcmd.RecommendedConfigPathEnvVar)
+	configFile, err := os.Stat(clientcmd.RecommendedHomeFile)
+	if ciEnvExists || configEnvExists || configFile != nil {
 		var config *restclient.Config
 		config, err = kubecli.DefaultClientConfig(&pflag.FlagSet{}).ClientConfig()
 		if err != nil {
@@ -38,9 +40,11 @@ func GetKubevirtClient() (kubecli.KubevirtClient, error) {
 		}
 	}
 
-	_, err = client.ServerVersion().Get()
+	version, err := client.Discovery().ServerVersion()
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve server version. Please check your authentication credentials: %w", err)
+		return nil, fmt.Errorf("failed to retrieve server version: %w", err)
+	} else {
+		fmt.Printf("Server version: %s\n", version.String())
 	}
 
 	return client, nil

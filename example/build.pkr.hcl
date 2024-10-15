@@ -34,7 +34,7 @@ locals {
 
 source "kubevirt-iso" "linux" {
   kubernetes_name      = local.images.linux.0.name
-  kubernetes_namespace = var.kubernetes_namespace
+  kubernetes_namespace = "${var.kubernetes_namespace}-linux"
   kubernetes_node_selectors = {
     "kubevirt.io/schedulable" = "true"
   }
@@ -48,7 +48,7 @@ source "kubevirt-iso" "linux" {
   ]
   kubevirt_os_preference = local.images.linux.0.os_distribution
   vm_disk_space          = local.images.linux.0.disk_space
-  vm_linux_cloud_init    = file("/Users/chomatdam/IdeaProjects/pelotech/packer-plugin-kubevirt/builder/common/k8s/generator/scripts/cloud-init.yaml")
+  vm_linux_cloud_init    = file("${path.root}/../builder/common/k8s/generator/scripts/cloud-init.yaml")
   # Optional (default file will be picked up)
   vm_deployment_timeout        = local.images.linux.0.deployment_timeout # Optional, default to '10m'
   vm_export_timeout            = local.images.linux.0.export_timeout     # Optional, default to '5m'
@@ -61,7 +61,7 @@ source "kubevirt-iso" "linux" {
 
 source "kubevirt-iso" "windows" {
   kubernetes_name      = local.images.windows.0.name
-  kubernetes_namespace = var.kubernetes_namespace
+  kubernetes_namespace = "${var.kubernetes_namespace}-windows"
   kubernetes_node_selectors = {
     "kubevirt.io/schedulable" = "true"
   }
@@ -75,7 +75,7 @@ source "kubevirt-iso" "windows" {
   ]
   kubevirt_os_preference       = local.images.windows.0.os_distribution
   vm_disk_space                = local.images.windows.0.disk_space
-  vm_windows_sysprep           = file("/Users/chomatdam/IdeaProjects/pelotech/packer-plugin-kubevirt/builder/common/k8s/generator/scripts/autounattend.xml")
+  vm_windows_sysprep           = file("${path.root}/../builder/common/k8s/generator/scripts/autounattend.xml")
   vm_deployment_timeout        = local.images.windows.0.deployment_timeout
   vm_export_timeout            = local.images.windows.0.export_timeout
   source_url                   = local.images.windows.0.url
@@ -91,7 +91,7 @@ source "kubevirt-iso" "windows" {
 build {
   sources = [
     "source.kubevirt-iso.linux",
-    "source.kubevirt-iso.windows"
+    # "source.kubevirt-iso.windows"
   ]
 
   #   provisioner "ansible" {

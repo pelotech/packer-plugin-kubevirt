@@ -5,7 +5,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	exportv1 "kubevirt.io/api/export/v1alpha1"
+	exportv1 "kubevirt.io/api/export/v1beta1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 )
 

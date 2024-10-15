@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"kubevirt.io/api/export/v1alpha1"
+	exportv1 "kubevirt.io/api/export/v1beta1"
 	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
@@ -24,12 +24,14 @@ import (
 type Config struct {
 	packercommon.PackerConfig `mapstructure:",squash"`
 	ctx                       interpolate.Context
-	S3Bucket                  string        `mapstructure:"s3_bucket"`
-	S3KeyPrefix               string        `mapstructure:"s3_key_prefix"`
-	AWSAccessKeyId            string        `mapstructure:"aws_access_key_id"`
-	AWSSecretAccessKey        string        `mapstructure:"aws_secret_access_key"`
-	AWSRegion                 string        `mapstructure:"aws_region"`
-	UploadTimeOut             time.Duration `mapstructure:"upload_timeout" required:"false"`
+	S3Bucket                  string `mapstructure:"s3_bucket"`
+	S3KeyPrefix               string `mapstructure:"s3_key_prefix"`
+
+	ServiceAccountName string        `mapstructure:"service_account_name"`
+	AWSAccessKeyId     string        `mapstructure:"aws_access_key_id"`
+	AWSSecretAccessKey string        `mapstructure:"aws_secret_access_key"`
+	AWSRegion          string        `mapstructure:"aws_region"`
+	UploadTimeOut      time.Duration `mapstructure:"upload_timeout" required:"false"`
 }
 
 type PostProcessor struct {
@@ -61,6 +63,10 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 		p.config.UploadTimeOut = 10 * time.Minute
 	}
 
+	if (p.config.AWSAccessKeyId == "" || p.config.AWSSecretAccessKey == "") && p.config.ServiceAccountName == "" {
+		return fmt.Errorf("either AWS access keys or service account name must be provided")
+	}
+
 	return nil
 }
 
@@ -82,7 +88,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	for _, vol := range export.Status.Links.Internal.Volumes {
 		if strings.HasSuffix(vol.Name, string(generator.SourceDataVolumeSuffix)) { // may need better logic if many volumes
 			for _, volumeFormat := range vol.Formats {
-				if volumeFormat.Format == v1alpha1.KubeVirtGz {
+				if volumeFormat.Format == exportv1.KubeVirtGz {
 					exportServerUrl = volumeFormat.Url
 				}
 			}
@@ -100,9 +106,15 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		ExportServerCertificate: export.Status.Links.Internal.Cert,
 		S3BucketName:            p.config.S3Bucket,
 		S3KeyPrefix:             p.config.S3KeyPrefix,
-		AWSAccessKeyId:          p.config.AWSAccessKeyId,
-		AWSSecretAccessKey:      p.config.AWSSecretAccessKey,
 		AWSRegion:               p.config.AWSRegion,
+	}
+	if p.config.ServiceAccountName != "" {
+		// Priority to IRSA-based auth
+		options.ServiceAccountName = &p.config.ServiceAccountName
+	} else {
+		// Default to AWS credentials
+		options.AWSAccessKeyId = &p.config.AWSAccessKeyId
+		options.AWSSecretAccessKey = &p.config.AWSSecretAccessKey
 	}
 
 	job := common.GenerateS3UploaderJob(export, options)

@@ -20,6 +20,7 @@ type FlatConfig struct {
 	PackerSensitiveVars []string          `mapstructure:"packer_sensitive_variables" cty:"packer_sensitive_variables" hcl:"packer_sensitive_variables"`
 	S3Bucket            *string           `mapstructure:"s3_bucket" cty:"s3_bucket" hcl:"s3_bucket"`
 	S3KeyPrefix         *string           `mapstructure:"s3_key_prefix" cty:"s3_key_prefix" hcl:"s3_key_prefix"`
+	ServiceAccountName  *string           `mapstructure:"service_account_name" cty:"service_account_name" hcl:"service_account_name"`
 	AWSAccessKeyId      *string           `mapstructure:"aws_access_key_id" cty:"aws_access_key_id" hcl:"aws_access_key_id"`
 	AWSSecretAccessKey  *string           `mapstructure:"aws_secret_access_key" cty:"aws_secret_access_key" hcl:"aws_secret_access_key"`
 	AWSRegion           *string           `mapstructure:"aws_region" cty:"aws_region" hcl:"aws_region"`
@@ -48,6 +49,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"packer_sensitive_variables": &hcldec.AttrSpec{Name: "packer_sensitive_variables", Type: cty.List(cty.String), Required: false},
 		"s3_bucket":                  &hcldec.AttrSpec{Name: "s3_bucket", Type: cty.String, Required: false},
 		"s3_key_prefix":              &hcldec.AttrSpec{Name: "s3_key_prefix", Type: cty.String, Required: false},
+		"service_account_name":       &hcldec.AttrSpec{Name: "service_account_name", Type: cty.String, Required: false},
 		"aws_access_key_id":          &hcldec.AttrSpec{Name: "aws_access_key_id", Type: cty.String, Required: false},
 		"aws_secret_access_key":      &hcldec.AttrSpec{Name: "aws_secret_access_key", Type: cty.String, Required: false},
 		"aws_region":                 &hcldec.AttrSpec{Name: "aws_region", Type: cty.String, Required: false},

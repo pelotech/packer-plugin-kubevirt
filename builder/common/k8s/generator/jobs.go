@@ -147,3 +147,81 @@ func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, pvcName string) *batchv1.
 		},
 	}
 }
+
+func GenerateQemuImgJob(vm *kubevirtv1.VirtualMachine, srcPVCName string, dstPVCName string) *batchv1.Job {
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-qemu-img-conversion", vm.Name),
+			Namespace: vm.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(vm, kubevirtv1.VirtualMachineGroupVersionKind),
+			},
+		},
+		Spec: batchv1.JobSpec{
+			TTLSecondsAfterFinished: pointer.Int32(30),
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					NodeSelector:  vm.Spec.Template.Spec.NodeSelector,
+					Tolerations:   vm.Spec.Template.Spec.Tolerations,
+					RestartPolicy: corev1.RestartPolicyNever,
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: pointer.Bool(false),
+						RunAsUser:    pointer.Int64(0),
+						RunAsGroup:   pointer.Int64(0),
+						FSGroup:      pointer.Int64(0),
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:  "qemu-img",
+							Image: "your-registry/qemu-img:latest",
+							Command: []string{
+								"qemu-img", "convert", "-f", "raw", "-O", "qcow2", path.Join("/disk", "input.img"), path.Join("/disk", "output.qcow2"),
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "src-disk",
+									ReadOnly:  false,
+									MountPath: path.Join("/disk", "input.img"),
+								},
+								{
+									Name:      "dst-disk",
+									ReadOnly:  false,
+									MountPath: path.Join("/disk", "output.qcow2"),
+								},
+							},
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									"devices.kubevirt.io/kvm": resource.MustParse("1"),
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "src-disk",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: srcPVCName,
+									ReadOnly:  true,
+								},
+							},
+						},
+						{
+							Name: "dst-disk",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: dstPVCName,
+									ReadOnly:  false,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
