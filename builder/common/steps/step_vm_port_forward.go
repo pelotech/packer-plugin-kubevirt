@@ -16,7 +16,7 @@ import (
 type StepPortForwardVM struct {
 	VirtClient kubecli.KubevirtClient
 	Comm       communicator.Config
-	stopChan chan struct{}
+	stopChan   chan struct{}
 }
 
 func (s *StepPortForwardVM) Run(ctx context.Context, state multistep.StateBag) multistep.StepAction {

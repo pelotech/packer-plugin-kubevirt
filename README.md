@@ -37,7 +37,7 @@ Make sure to build and setup the binary with:
 go build .
 # Move binary
 cp packer-plugin-kubevirt ~/.packer.d/plugins/packer-plugin-kubevirt # Option 1
-packer plugins install --path packer-plugin-kubevirt "github.com/pelotech/kubevirt" # Option 2 
+packer plugins install --path packer-plugin-kubevirt "github.com/pelotech/kubevirt" # Option 2
 ```
 
 Once everything required is set up, run:
@@ -49,4 +49,4 @@ This will run unit tests for all plugins in this set.
 ## Pipeline
 - integration tests (packer running against KinD cluster)
 - release (manual) for any documentation update
-- release (tag event) for the binary 
+- release (tag event) for the binary

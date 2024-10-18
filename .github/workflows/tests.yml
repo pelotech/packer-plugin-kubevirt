@@ -38,7 +38,7 @@ jobs:
         run: go build .
 
       - name: generate kind config
-        run: |          
+        run: |
           cat <<EOF > kind-config.yaml
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
@@ -62,14 +62,14 @@ jobs:
           export KUBEVIRT_VERSION=$(curl -s https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt)
           kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml"
           kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml"
-          
+
           export CDI_VERSION=$(basename $(curl -s -w %{redirect_url} https://github.com/kubevirt/containerized-data-importer/releases/latest))
           kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-operator.yaml
           kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-cr.yaml
-          
+
           kubectl wait --for=jsonpath='{.status.phase}'=Deployed kubevirt/kubevirt --namespace kubevirt --timeout=2m
           kubectl wait --for=jsonpath='{.status.phase}'=Deployed cdi/cdi --namespace cdi --timeout=2m
-          
+
           kubectl apply -k "https://github.com/kubevirt/common-instancetypes/VirtualMachineClusterPreferences?ref=v1.1.0"
           # to skip '/dev/kvm' requirement - but requires testing with custom node and host volume mounting
           # kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'
@@ -81,19 +81,19 @@ jobs:
           echo "----------------"
           lscpu | grep -E '^Architecture|^CPU\(s\)|^Model name|^Thread|^Core|^Socket|^Vendor ID'
           echo ""
-          
+
           # Print Memory information
           echo "Memory Information:"
           echo "-------------------"
           free -h
           echo ""
-          
+
           # Print Disk Space information
           echo "Disk Space Information:"
           echo "-----------------------"
           df -hT | awk '{print $1, $2, $3, $4, $5, $6, $7}'
           echo ""
-          
+
           echo "KVM module state:"
           echo "-----------------------"
           if lsmod | grep -q kvm; then
