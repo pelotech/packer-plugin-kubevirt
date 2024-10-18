@@ -8,9 +8,9 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/zclconf/go-cty v1.15.0
 	golang.org/x/crypto v0.28.0
-	k8s.io/api v0.31.0
-	k8s.io/apimachinery v0.31.0
-	k8s.io/client-go v0.31.0
+	k8s.io/api v0.31.1
+	k8s.io/apimachinery v0.31.1
+	k8s.io/client-go v0.31.1
 	k8s.io/utils v0.0.0-20240921022957-49e7df575cb6
 	kubevirt.io/api v1.3.1
 	kubevirt.io/client-go v1.3.1
@@ -20,9 +20,9 @@ require (
 
 replace (
 	github.com/zclconf/go-cty => github.com/nywilken/go-cty v1.13.3 // added by packer-sdc fix as noted in github.com/hashicorp/packer-plugin-sdk/issues/187
-	k8s.io/api => k8s.io/api v0.30.5
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.30.5
-	k8s.io/client-go => k8s.io/client-go v0.30.5
+	k8s.io/api => k8s.io/api v0.31.1
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.31.1
+	k8s.io/client-go => k8s.io/client-go v0.31.1
 	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20241009091222-67ed5848f094
 )
 
