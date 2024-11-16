@@ -3,7 +3,7 @@ module packer-plugin-kubevirt
 go 1.23.2
 
 require (
-	github.com/hashicorp/hcl/v2 v2.22.0
+	github.com/hashicorp/hcl/v2 v2.23.0
 	github.com/hashicorp/packer-plugin-sdk v0.5.4
 	github.com/spf13/pflag v1.0.5
 	github.com/zclconf/go-cty v1.15.0
