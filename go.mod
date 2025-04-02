@@ -7,14 +7,14 @@ require (
 	github.com/hashicorp/packer-plugin-sdk v0.5.4
 	github.com/spf13/pflag v1.0.5
 	github.com/zclconf/go-cty v1.15.0
-	golang.org/x/crypto v0.28.0
+	golang.org/x/crypto v0.31.0
 	k8s.io/api v0.31.0
 	k8s.io/apimachinery v0.31.0
 	k8s.io/client-go v0.31.0
 	k8s.io/utils v0.0.0-20240921022957-49e7df575cb6
 	kubevirt.io/api v1.3.1
 	kubevirt.io/client-go v1.3.1
-	kubevirt.io/containerized-data-importer-api v1.60.3
+	kubevirt.io/containerized-data-importer-api v1.62.0
 	sigs.k8s.io/controller-runtime v0.19.0
 )
 
@@ -131,12 +131,12 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc // indirect
 	golang.org/x/mod v0.20.0 // indirect
-	golang.org/x/net v0.28.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
-	golang.org/x/term v0.25.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/term v0.27.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
