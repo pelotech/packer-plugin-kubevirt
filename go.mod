@@ -15,7 +15,7 @@ require (
 	kubevirt.io/api v1.5.2
 	kubevirt.io/client-go v1.5.2
 	kubevirt.io/containerized-data-importer-api v1.62.0
-	sigs.k8s.io/controller-runtime v0.20.4
+	sigs.k8s.io/controller-runtime v0.21.0
 )
 
 replace (
