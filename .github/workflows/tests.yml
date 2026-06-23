@@ -108,7 +108,7 @@ jobs:
           kubectl get nodes -o jsonpath='{range .items[*]}{"["}{.metadata.name}{"] cpu: "}{.status.capacity.cpu}{"; memory: "}{.status.capacity.memory}{"\n"}{end}'
 
       - name: packer setup
-        uses: hashicorp/setup-packer@v3.1.0
+        uses: hashicorp/setup-packer@v3.4.0
         with:
           version: ${{ env.PRODUCT_VERSION }}
 
