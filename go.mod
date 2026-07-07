@@ -6,7 +6,7 @@ require (
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/hashicorp/packer-plugin-sdk v0.6.2
 	github.com/spf13/pflag v1.0.7
-	github.com/zclconf/go-cty v1.16.3
+	github.com/zclconf/go-cty v1.19.0
 	golang.org/x/crypto v0.40.0
 	k8s.io/api v0.33.3
 	k8s.io/apimachinery v0.33.3
