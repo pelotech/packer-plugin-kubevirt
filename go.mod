@@ -1,6 +1,6 @@
 module packer-plugin-kubevirt
 
-go 1.24.5
+go 1.25
 
 require (
 	github.com/hashicorp/hcl/v2 v2.24.0
@@ -11,7 +11,7 @@ require (
 	k8s.io/api v0.33.3
 	k8s.io/apimachinery v0.33.3
 	k8s.io/client-go v0.33.3
-	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
+	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	kubevirt.io/api v1.5.2
 	kubevirt.io/client-go v1.5.2
 	kubevirt.io/containerized-data-importer-api v1.62.0
