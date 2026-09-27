@@ -1,9 +1,16 @@
+Type: `kubevirt-iso`
+
+<!--
   Include a short description about the builder. This is a good place
   to call out what the builder does, and any requirements for the given
   builder environment. See https://www.packer.io/docs/builder/null
 -->
 
-The ISO builder is mostly used to create base VM images, an ISO of your choice will be the starting point.
+The ISO builder is mostly used to create base VM images, an ISO or a cloud image of your choice will be the starting point.
+
+The builder runs against the Kubernetes cluster of your current kube context, with KubeVirt and CDI installed.
+Once provisioned, the Virtual Machine is stopped, Linux disks are generalized with `virt-sysprep`
+(running as a Kubernetes job in the cluster, nothing to install locally) and the disk is exposed through a Virtual Machine Export.
 
 <!-- Builder Configuration Fields -->
 
@@ -13,15 +20,12 @@ The ISO builder is mostly used to create base VM images, an ISO of your choice w
 
 - `kubernetes_namespace` (string) - Kubernetes namespace used to provision and export virtual machines
 
-- `kubernetes_node_selectors` ([string]) - Kubernetes node selectors targeting the node where resources should be created
+- `source_url` (string) - URL of the ISO or cloud image used as the starting point (HTTP or S3)
 
-- `kubernetes_tolerations` (map[string]string) - Kubernetes tolerations resources should support to get eligible to the desired node
+- `kubevirt_os_preference` (string) - KubeVirt VM preference to apply to the VM. List of preferences available [here](https://github.com/kubevirt/common-instancetypes/tree/main/preferences).
+A preference containing `windows` selects the Windows installation flow, any other value selects the Linux one
 
-- `source_url` (string) - Kubernetes tolerations resources should support to get eligible to the desired node
-
-- `kubevirt_os_preference` (string) - KubeVirt VM preference to apply to the VM. List of preferences available [here](https://github.com/kubevirt/common-instancetypes/tree/main/preferences)
-
-- `vm_disk_space` (string) - KubeVirt VM disk space required to install the OS and its packages
+- `vm_disk_space` (string) - KubeVirt VM disk space required to install the OS and its packages (e.g. `10Gi`)
 
 <!--
   Optional Configuration Fields
@@ -33,14 +37,23 @@ The ISO builder is mostly used to create base VM images, an ISO of your choice w
 
 **Optional fields**
 
+- `kubernetes_node_selectors` (map[string]string) - Kubernetes node selectors targeting the node where resources should be created
+Defaults to no node selector
+
+- `kubernetes_tolerations` ([]map[string]string) - Kubernetes tolerations resources should support to get eligible to the desired node
+Defaults to no toleration
+
 - `vm_linux_cloud_init` (string) - Cloud-init file content to inject into the VM at first boot.
 Defaults to a default cloud-init file available in the source code
 
-- `vm_deployment_timeout` (string) - Time out duration for VM to get its OS installed (including cloud-init or sysprep)
-Defaults to '10m'
+- `vm_windows_sysprep` (string) - Sysprep answer file content (`autounattend.xml`) used to install Windows.
+Defaults to a default answer file available in the source code
 
-- `vm_deployment_timeout` (string) - Time out duration for VM export server to be up and ready for download
-Defaults to '5m'
+- `vm_deployment_timeout` (duration string) - Time out duration for VM to get its OS installed (including cloud-init or sysprep)
+Defaults to `10m`
+
+- `vm_export_timeout` (duration string) - Time out duration for each stage of the export: VM shutdown, `virt-sysprep` job (Linux only) and export server to be up and ready for download
+Defaults to `5m`
 
 - `source_aws_access_key_id` (string) - AWS Access Key ID for S3 bucket containing VM images
 Sensitive field - Defaults to empty string (will skip adding credentials)
@@ -53,19 +66,19 @@ Sensitive field - Defaults to empty string (will skip adding credentials)
 - `communicator` (string) - Packer communicator type
 Accepted values: `ssh`, `winrm` - Defaults to `ssh`
 
-- `ssh_port` (string) - SSH port
+- `ssh_port` (int) - Local port forwarded to the VM SSH port
 Accepted value: `>=1024` - Defaults to `2222`
 
-- `winrm_port` (string) - WinRM port
+- `winrm_port` (int) - Local port forwarded to the VM WinRM port
 Accepted value: `>=1024` - Defaults to `5389`
 
-- `winrm_use_ssl` (string) - Use HTTPS for WinRM
+- `winrm_use_ssl` (bool) - Use HTTPS for WinRM
 Defaults to `false`
 
-- `winrm_insecure` (string) - Skip server certificate chain and host name check
+- `winrm_insecure` (bool) - Skip server certificate chain and host name check
 Defaults to `false`
 
-- `winrm_timeout` (string) - WinRM connection timeout
+- `winrm_timeout` (duration string) - WinRM connection timeout
 Defaults to `30s`
 
 <!--
@@ -113,5 +126,24 @@ source "kubevirt-iso" "ubuntu" {
 #### Windows
 ```hcl
 source "kubevirt-iso" "windows" {
+  kubernetes_name        = "windows"
+  kubernetes_namespace   = "default"
+  source_url             = "https://software.download.prss.microsoft.com/dbazure/Win10_22H2_English_x64v1.iso"
+  kubevirt_os_preference = "windows.10.virtio"
+  vm_disk_space          = "15Gi"
+  # Optional fields
+  vm_windows_sysprep     = file("/path/to/autounattend.xml") # default to generic answer file
+  vm_deployment_timeout  = "20m"                             # default to '10m'
+  vm_export_timeout      = "15m"                             # default to '5m'
+
+  communicator           = "winrm"
+  winrm_port             = 5985                              # default to 5389
+  winrm_use_ssl          = false                             # default to false
+  winrm_insecure         = true                              # default to false
+  winrm_timeout          = "30s"                             # default to '30s'
+}
+
+build {
+  sources = ["source.kubevirt-iso.windows"]
 }
 ```

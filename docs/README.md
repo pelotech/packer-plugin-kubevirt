@@ -35,8 +35,8 @@ The KubeVirt plugin is intended for creating VM base images.
 
 #### Builders
 
-- [builder](/packer/integrations/hashicorp/scaffolding/latest/components/builder/builder-name) - The ISO builder is used to spin up a KubeVirt VM, provision and export the associated disk image.
+- [kubevirt-iso](https://github.com/pelotech/packer-plugin-kubevirt/blob/main/docs/builders/builder.mdx) - The ISO builder is used to spin up a KubeVirt VM, provision and export the associated disk image.
 
 #### Post-processors
 
-- [post-processor](/packer/integrations/hashicorp/scaffolding/latest/components/post-processor/postprocessor-name) - The S3 post-processor is used to export disk images using a Kubernetes job to an S3 bucket.
+- [kubevirt-s3](https://github.com/pelotech/packer-plugin-kubevirt/blob/main/docs/post-processors/post-processor.mdx) - The S3 post-processor is used to export disk images using a Kubernetes job to an S3 bucket.
