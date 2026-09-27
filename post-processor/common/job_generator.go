@@ -7,8 +7,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	exportv1 "kubevirt.io/api/export/v1beta1"
 	"packer-plugin-kubevirt/builder/common/k8s"
+	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	"packer-plugin-kubevirt/builder/common/steps"
 	"path"
+	"slices"
+	"strings"
 )
 
 const (
@@ -19,7 +22,10 @@ const (
 	exportTokenEnvVar            = "EXPORT_TOKEN"
 	exportServerPEMCert          = "cert.pem"
 	jobSecretSuffix              = "s3-uploader"
+	qemuImgImage                 = "quay.io/kubevirt/cdi-importer:v1.66.1"
 )
+
+var supportedImageFormats = []string{"qcow2", "vmdk", "vhdx", "vdi"}
 
 type S3UploaderOptions struct {
 	Name               string
@@ -36,6 +42,37 @@ type S3UploaderOptions struct {
 	AWSAccessKeyId     *string
 	AWSSecretAccessKey *string
 	AWSRegion          string
+
+	ImageFormat string
+}
+
+func ValidateImageFormat(format string) error {
+	if format != "" && !slices.Contains(supportedImageFormats, format) {
+		return fmt.Errorf("unsupported image format '%s', allowed values: %s", format, strings.Join(supportedImageFormats, ", "))
+	}
+	return nil
+}
+
+// FindVolumeUrl returns the raw disk image URL when the image is converted, the compressed one otherwise
+func FindVolumeUrl(export *exportv1.VirtualMachineExport, imageFormat string) string {
+	if export.Status == nil || export.Status.Links == nil || export.Status.Links.Internal == nil {
+		return ""
+	}
+
+	exportFormat := exportv1.KubeVirtGz
+	if imageFormat != "" {
+		exportFormat = exportv1.KubeVirtRaw
+	}
+	for _, vol := range export.Status.Links.Internal.Volumes {
+		if strings.HasSuffix(vol.Name, string(generator.SourceDataVolumeSuffix)) { // may need better logic if many volumes
+			for _, volumeFormat := range vol.Formats {
+				if volumeFormat.Format == exportFormat {
+					return volumeFormat.Url
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.Secret {
@@ -66,7 +103,28 @@ func buildJobSecretName(name string) string {
 }
 
 func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
-	filename := fmt.Sprintf("%s.img.gz", opts.Name)
+	downloadedFilename := fmt.Sprintf("%s.img.gz", opts.Name)
+	filename := downloadedFilename
+	var convertContainers []corev1.Container
+	if opts.ImageFormat != "" {
+		downloadedFilename = fmt.Sprintf("%s.img", opts.Name)
+		filename = fmt.Sprintf("%s.%s", opts.Name, opts.ImageFormat)
+		convertContainers = append(convertContainers, corev1.Container{
+			Name:  "convert",
+			Image: qemuImgImage,
+			Command: []string{
+				"qemu-img", "convert", "-f", "raw", "-O", opts.ImageFormat,
+				path.Join(tempVolumeMountPath, downloadedFilename),
+				path.Join(tempVolumeMountPath, filename),
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      tempVolumeMountVolumeMapping,
+					MountPath: tempVolumeMountPath,
+				},
+			},
+		})
+	}
 
 	var serviceAccountName string
 	if opts.ServiceAccountName != nil {
@@ -85,7 +143,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccountName,
-					InitContainers: []corev1.Container{
+					InitContainers: append([]corev1.Container{
 						{
 							Name:  "download",
 							Image: "curlimages/curl:8.10.1",
@@ -94,7 +152,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 								"-c",
 								fmt.Sprintf("curl --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
 									certVolumeMountPath, exportServerPEMCert,
-									tempVolumeMountPath, filename,
+									tempVolumeMountPath, downloadedFilename,
 									steps.ExportTokenHeader, exportTokenEnvVar,
 									opts.ExportServerUrl),
 							},
@@ -122,7 +180,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 								},
 							},
 						},
-					},
+					}, convertContainers...),
 					Containers: []corev1.Container{
 						{
 							Name:  "upload",
