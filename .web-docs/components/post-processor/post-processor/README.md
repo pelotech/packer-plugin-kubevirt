@@ -36,7 +36,11 @@ A Kubernetes job downloads the disk image from the Virtual Machine Export and up
 - `s3_key_prefix` (string) -  AWS S3 Key prefix for all the exported VM images
 Defaults to empty string (image stored at the root of the bucket)
 
-- `upload_timeout` (duration string) -  Upload timeout duration
+- `image_format` (string) -  Format the disk image is converted to with `qemu-img` before the upload, stored as `<kubernetes_name>.<image_format>`.
+The job needs scratch space for both the raw and the converted image
+Accepted values: `qcow2`, `vmdk`, `vhdx`, `vdi` - Defaults to empty string (compressed raw image, no conversion)
+
+- `upload_timeout` (duration string) -  Timeout duration for the download, the conversion and the upload
 Defaults to `10m`
 
 <!--
@@ -61,6 +65,7 @@ build {
     aws_region            = "us-east-1"
     aws_access_key_id     = "AWS_ACCESS_KEY_ID"
     aws_secret_access_key = "AWS_SECRET_ACCESS_KEY"
+    image_format          = "qcow2"                       # Optional
     upload_timeout        = "10m"                         # Optional
   }
 }
