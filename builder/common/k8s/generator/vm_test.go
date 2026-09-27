@@ -1,9 +1,14 @@
 package generator
 
 import (
+	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	"os"
+	"os/exec"
 	"packer-plugin-kubevirt/builder/common/vm"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -80,5 +85,37 @@ func TestGenerateVirtualMachineRunStrategy(t *testing.T) {
 	}
 	if strategy := virtualMachine.Spec.RunStrategy; strategy == nil || *strategy != kubevirtv1.RunStrategyAlways {
 		t.Errorf("expected run strategy '%s', got: %v", kubevirtv1.RunStrategyAlways, strategy)
+	}
+}
+
+func TestLinuxProbeFollowsCloudInitStatus(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the probe is a shell command")
+	}
+	probe := buildProbeExecCommand(vm.Linux)
+
+	for name, test := range map[string]struct {
+		status   string
+		exitCode int
+		ready    bool
+	}{
+		"done":               {status: "done", exitCode: 0, ready: true},
+		"done with warnings": {status: "done", exitCode: 2, ready: true},
+		"running":            {status: "running", exitCode: 0, ready: false},
+		"error":              {status: "error", exitCode: 1, ready: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			script := fmt.Sprintf("#!/bin/sh\necho 'status: %s'\nexit %d\n", test.status, test.exitCode)
+			if err := os.WriteFile(filepath.Join(directory, "cloud-init"), []byte(script), 0o755); err != nil {
+				t.Fatalf("failed to write the cloud-init stand-in: %v", err)
+			}
+
+			t.Setenv("PATH", directory+":/usr/bin:/bin")
+			err := exec.Command(probe[0], probe[1:]...).Run()
+			if ready := err == nil; ready != test.ready {
+				t.Errorf("expected ready to be %t, got: %t (%v)", test.ready, ready, err)
+			}
+		})
 	}
 }
