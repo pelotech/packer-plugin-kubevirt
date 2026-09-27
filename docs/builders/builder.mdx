@@ -244,5 +244,7 @@ for a few seconds and gives up without a key. Type one every second for a while,
 
 **Generalization.** Run Sysprep as the `shutdown_command`, with `/generalize /oobe /shutdown`. It cannot be a provisioner:
 Sysprep takes WinRM down while it runs, so Packer loses the connection before the end. The builder waits for the VM to be stopped.
+Set `PersistAllDeviceInstalls` to `true` in the answer file given to Sysprep: otherwise generalize uninstalls the network adapter
+that carries WinRM, and Sysprep stops there without shutting Windows down.
 
 **Default answer file.** The one of the source code installs Windows 10 Pro on a BIOS machine. Bring your own for anything else.

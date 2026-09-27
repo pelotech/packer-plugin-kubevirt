@@ -126,6 +126,7 @@ jobs:
           packer validate .
 
       - name: packer build
+        id: build
         working-directory: ${{ env.working-directory }}
         run: |
           mkdir -p "${RUNNER_TEMP}/screenshots"
@@ -153,7 +154,7 @@ jobs:
       - name: check that the image holds a generalized Windows
         run: |
           sudo apt-get update > /dev/null
-          sudo apt-get install --yes qemu-utils libguestfs-tools ntfs-3g > /dev/null
+          sudo apt-get install --yes qemu-utils libguestfs-tools libhivex-bin ntfs-3g > /dev/null
           image="${RUNNER_TEMP}/${VM_NAME}.qcow2"
           qemu-img info "${image}"
 
@@ -187,7 +188,7 @@ jobs:
           kubectl logs --namespace garage deployment/garage --tail 100 || true
 
       - name: display the logs of Windows setup and Sysprep
-        if: failure()
+        if: failure() && steps.build.outcome == 'failure'
         run: |
           kubectl patch virtualmachine "${VM_NAME}" --namespace "${VM_NAMESPACE}" --type merge --patch '{"spec":{"runStrategy":"Halted"}}' || true
           kubectl delete virtualmachineinstance "${VM_NAME}" --namespace "${VM_NAMESPACE}" --grace-period 0 --force --wait=false || true

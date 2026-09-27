@@ -6,7 +6,8 @@
             <SkipRearm>1</SkipRearm>
         </component>
         <component name="Microsoft-Windows-PnpSysprep" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-            <PersistAllDeviceInstalls>false</PersistAllDeviceInstalls>
+            <!-- keeps the network adapter: Sysprep runs over WinRM and stops when it is uninstalled -->
+            <PersistAllDeviceInstalls>true</PersistAllDeviceInstalls>
             <DoNotCleanUpNonPresentDevices>false</DoNotCleanUpNonPresentDevices>
         </component>
     </settings>
