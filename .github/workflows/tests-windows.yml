@@ -130,11 +130,15 @@ jobs:
         run: |
           mkdir -p "${RUNNER_TEMP}/screenshots"
           while true; do
-            virtctl vnc screenshot "${VM_NAME}" --namespace "${VM_NAMESPACE}" --file "${RUNNER_TEMP}/screenshots/$(date +%H%M%S).png" > /dev/null 2>&1 || true
-            sleep 60
+            now="$(date +%H%M%S)"
+            virtctl vnc screenshot "${VM_NAME}" --namespace "${VM_NAMESPACE}" --file "${RUNNER_TEMP}/screenshots/${now}.png" > /dev/null 2>&1 || true
+            instance="$(kubectl get virtualmachineinstance "${VM_NAME}" --namespace "${VM_NAMESPACE}" --output jsonpath='{.status.phase} agent={.status.conditions[?(@.type=="AgentConnected")].status}' 2>/dev/null || true)"
+            echo "${now} ${instance} qemu-cpu=$(ps -C qemu-kvm -o pcpu= | tr -d ' ')" >> "${RUNNER_TEMP}/screenshots/state.log"
+            sleep 20
           done &
 
-          PACKER_LOG=1 packer build .
+          # on failure the Virtual Machine and its disk are kept, to read the logs of Windows
+          PACKER_LOG=1 packer build -on-error=abort .
 
       - name: check the image in the bucket
         env:
@@ -181,3 +185,26 @@ jobs:
           kubectl describe virtualmachineinstances --namespace "${VM_NAMESPACE}"
           kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 50
           kubectl logs --namespace garage deployment/garage --tail 100 || true
+
+      - name: display the logs of Windows setup and Sysprep
+        if: failure()
+        run: |
+          kubectl patch virtualmachine "${VM_NAME}" --namespace "${VM_NAMESPACE}" --type merge --patch '{"spec":{"runStrategy":"Halted"}}' || true
+          kubectl delete virtualmachineinstance "${VM_NAME}" --namespace "${VM_NAMESPACE}" --grace-period 0 --force --wait=false || true
+          kubectl wait virtualmachineinstance "${VM_NAME}" --namespace "${VM_NAMESPACE}" --for=delete --timeout=5m || true
+
+          # the volumes of KinD live in the /var of its node, a Docker volume of the runner
+          node_var="$(docker inspect kind-control-plane --format '{{ range .Mounts }}{{ if eq .Destination "/var" }}{{ .Source }}{{ end }}{{ end }}')"
+          volume="$(kubectl get persistentvolume "$(kubectl get persistentvolumeclaim "${VM_NAME}-source" --namespace "${VM_NAMESPACE}" --output jsonpath='{.spec.volumeName}')" --output jsonpath='{.spec.hostPath.path}{.spec.local.path}')"
+          disk="${node_var}${volume#/var}/disk.img"
+          sudo ls -ls "${disk}"
+
+          sudo apt-get update > /dev/null
+          sudo apt-get install --yes libguestfs-tools ntfs-3g > /dev/null
+          export LIBGUESTFS_BACKEND=direct
+          for file in /Windows/System32/Sysprep/Panther/setuperr.log /Windows/System32/Sysprep/Panther/setupact.log /Windows/Panther/setuperr.log; do
+            echo "::group::${file}"
+            sudo --preserve-env=LIBGUESTFS_BACKEND virt-cat --add "${disk}" --ro "${file}" | tail -n 150 || true
+            echo "::endgroup::"
+          done
+          sudo --preserve-env=LIBGUESTFS_BACKEND virt-win-reg --ro "${disk}" 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State' ImageState || true

@@ -31,7 +31,7 @@ source "kubevirt-iso" "windows" {
 
   # Sysprep generalizes Windows, then shuts it down. WinRM goes away while it runs
   shutdown_command = "C:\\Windows\\System32\\Sysprep\\Sysprep.exe /generalize /oobe /shutdown /quiet /unattend:C:\\Windows\\Temp\\unattend.xml"
-  shutdown_timeout = "30m"
+  shutdown_timeout = "15m"
 }
 
 build {
