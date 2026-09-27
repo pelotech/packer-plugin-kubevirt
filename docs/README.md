@@ -17,7 +17,7 @@ packer {
     name = {
       # source represents the GitHub URI to the plugin repository without the `packer-plugin-` prefix.
       source  = "github.com/pelotech/kubevirt"
-      version = ">=0.0.1"
+      version = ">=0.1.0"
     }
   }
 }
