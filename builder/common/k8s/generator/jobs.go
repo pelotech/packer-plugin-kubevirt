@@ -55,8 +55,6 @@ func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, pvcName string) *batchv1.
 								"--verbose",
 								"--add",
 								path.Join(vmDiskPath, "disk.img"),
-								//"--run-command",
-								//"'cloud-init clean'",
 								"--network",
 								"--enable",
 								"bash-history,machine-id,user-account",
