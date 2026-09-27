@@ -50,8 +50,14 @@ jobs:
 
       - name: tools setup
         uses: jdx/mise-action@v4
+
+      - name: go cache
+        uses: actions/cache@v6
         with:
-          install_args: go packer kind kubectl
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
 
       - name: Cache build
         uses: actions/cache@v6
