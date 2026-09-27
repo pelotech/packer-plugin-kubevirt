@@ -1,7 +1,6 @@
 package generator
 
 import (
-	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -17,7 +16,7 @@ const (
 func GenerateTokenSecret(export *exportv1.VirtualMachineExport, token string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      buildTokenSecretName(export.Spec.Source.Name),
+			Name:      buildSecretName(export.Spec.Source.Name, tokenSecretSuffix),
 			Namespace: export.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),
@@ -36,7 +35,7 @@ func GenerateVirtualMachineExport(vm *kubevirtv1.VirtualMachine) *exportv1.Virtu
 		Kind:     kubevirtv1.VirtualMachineGroupVersionKind.Kind,
 		Name:     vm.Name,
 	}
-	secretName := buildTokenSecretName(vm.Name)
+	secretName := buildSecretName(vm.Name, tokenSecretSuffix)
 
 	return &exportv1.VirtualMachineExport{
 		ObjectMeta: metav1.ObjectMeta{
@@ -48,8 +47,4 @@ func GenerateVirtualMachineExport(vm *kubevirtv1.VirtualMachine) *exportv1.Virtu
 			Source:         exportSource,
 		},
 	}
-}
-
-func buildTokenSecretName(vmName string) string {
-	return fmt.Sprintf("%s-%s", vmName, tokenSecretSuffix)
 }
