@@ -17,12 +17,9 @@ concurrency:
   group: test-plugin-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'latest' }}
   cancel-in-progress: true
 
-env:
-  PRODUCT_VERSION: "1.16.1"
-
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     name: Run Packer (${{ matrix.export }})
     strategy:
       fail-fast: false
@@ -51,10 +48,16 @@ jobs:
       - name: repository checkout
         uses: actions/checkout@v7
 
-      - name: go setup
-        uses: actions/setup-go@v7
+      - name: tools setup
+        uses: jdx/mise-action@v4
+
+      - name: go cache
+        uses: actions/cache@v6
         with:
-          go-version-file: 'go.mod'
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
 
       - name: Cache build
         uses: actions/cache@v6
@@ -79,12 +82,8 @@ jobs:
           EOF
 
       - name: kind setup
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: kind
-          version: v0.33.0
-          kubectl_version: v1.37.1
-          config: kind-config.yaml
+        run: |
+          kind create cluster --config kind-config.yaml --wait 5m
 
       - name: kubevirt+cdi install
         run: |
@@ -164,11 +163,6 @@ jobs:
           echo "Kubernetes worker nodes:"
           echo "-----------------------"
           kubectl get nodes -o jsonpath='{range .items[*]}{"["}{.metadata.name}{"] cpu: "}{.status.capacity.cpu}{"; memory: "}{.status.capacity.memory}{"\n"}{end}'
-
-      - name: packer setup
-        uses: hashicorp/setup-packer@v3.4.0
-        with:
-          version: ${{ env.PRODUCT_VERSION }}
 
       - name: packer format
         run: |
