@@ -39,7 +39,7 @@ packer {
   required_plugins {
     kubevirt = {
       source  = "github.com/pelotech/kubevirt"
-      version = ">= 0.0.1"
+      version = ">= 0.1.0"
     }
   }
 }
