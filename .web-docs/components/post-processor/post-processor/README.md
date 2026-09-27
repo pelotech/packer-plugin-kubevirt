@@ -43,6 +43,10 @@ Accepted values: `qcow2`, `vmdk`, `vhdx`, `vdi` - Defaults to empty string (comp
 - `upload_timeout` (duration string) -  Timeout duration for the download, the conversion and the upload
 Defaults to `10m`
 
+- `keep_export` (bool) -  Keep the Virtual Machine Export once done, for another post-processor to use it.
+The last post-processor of a build should delete it
+Defaults to `false`
+
 <!--
   A basic example on the usage of the post-processor. Multiple examples
   can be provided to highlight various configurations.

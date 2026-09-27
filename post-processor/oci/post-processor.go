@@ -32,6 +32,7 @@ type Config struct {
 	RegistrySecretName  string        `mapstructure:"registry_secret_name" required:"false"`
 	RegistryInsecure    bool          `mapstructure:"registry_insecure" required:"false"`
 	UploadTimeOut       time.Duration `mapstructure:"upload_timeout" required:"false"`
+	KeepExport          bool          `mapstructure:"keep_export" required:"false"`
 	ImageFormat         string        `mapstructure:"image_format" required:"false"`
 	DefaultPreference   string        `mapstructure:"default_preference" required:"false"`
 	DefaultInstanceType string        `mapstructure:"default_instance_type" required:"false"`
@@ -122,7 +123,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	if err != nil {
 		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
 	}
-	defer p.cleanupResources(ui, ns, name)
+	defer common.DeleteOrKeepExport(p.clients, ui, ns, name, p.config.KeepExport)
 
 	exportServerUrl := common.FindVolumeUrl(export, p.config.ImageFormat)
 	if exportServerUrl == "" {
@@ -164,13 +165,4 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	}
 
 	return source, true, true, nil
-}
-
-func (p *PostProcessor) cleanupResources(ui packersdk.Ui, ns, name string) {
-	err := p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
-	if err == nil {
-		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", ns, name))
-	} else {
-		ui.Error(fmt.Sprintf("failed to delete Virtual Machine Export %s/%s: %v", ns, name, err))
-	}
 }

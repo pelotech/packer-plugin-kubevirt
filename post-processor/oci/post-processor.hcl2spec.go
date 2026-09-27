@@ -25,6 +25,7 @@ type FlatConfig struct {
 	RegistrySecretName  *string           `mapstructure:"registry_secret_name" required:"false" cty:"registry_secret_name" hcl:"registry_secret_name"`
 	RegistryInsecure    *bool             `mapstructure:"registry_insecure" required:"false" cty:"registry_insecure" hcl:"registry_insecure"`
 	UploadTimeOut       *string           `mapstructure:"upload_timeout" required:"false" cty:"upload_timeout" hcl:"upload_timeout"`
+	KeepExport          *bool             `mapstructure:"keep_export" required:"false" cty:"keep_export" hcl:"keep_export"`
 	ImageFormat         *string           `mapstructure:"image_format" required:"false" cty:"image_format" hcl:"image_format"`
 	DefaultPreference   *string           `mapstructure:"default_preference" required:"false" cty:"default_preference" hcl:"default_preference"`
 	DefaultInstanceType *string           `mapstructure:"default_instance_type" required:"false" cty:"default_instance_type" hcl:"default_instance_type"`
@@ -57,6 +58,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"registry_secret_name":       &hcldec.AttrSpec{Name: "registry_secret_name", Type: cty.String, Required: false},
 		"registry_insecure":          &hcldec.AttrSpec{Name: "registry_insecure", Type: cty.Bool, Required: false},
 		"upload_timeout":             &hcldec.AttrSpec{Name: "upload_timeout", Type: cty.String, Required: false},
+		"keep_export":                &hcldec.AttrSpec{Name: "keep_export", Type: cty.Bool, Required: false},
 		"image_format":               &hcldec.AttrSpec{Name: "image_format", Type: cty.String, Required: false},
 		"default_preference":         &hcldec.AttrSpec{Name: "default_preference", Type: cty.String, Required: false},
 		"default_instance_type":      &hcldec.AttrSpec{Name: "default_instance_type", Type: cty.String, Required: false},
