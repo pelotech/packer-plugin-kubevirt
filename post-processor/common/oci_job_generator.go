@@ -133,7 +133,8 @@ func generateConvertScript(opts OCIUploaderOptions, downloadedFilename string) s
 	prepareDisk := fmt.Sprintf("mv %s %s", downloadedFile, path.Join(diskDirectory, downloadedFilename))
 	if opts.ImageFormat != "raw" {
 		diskFile := path.Join(diskDirectory, fmt.Sprintf("%s.%s", opts.Name, opts.ImageFormat))
-		prepareDisk = fmt.Sprintf("qemu-img convert -f raw -O %s %s %s\nrm %s", opts.ImageFormat, downloadedFile, diskFile, downloadedFile)
+		convertCommand := strings.Join(generateConvertCommand(opts.ImageFormat, downloadedFile, diskFile), " ")
+		prepareDisk = fmt.Sprintf("%s\nrm %s", convertCommand, downloadedFile)
 	}
 
 	return strings.Join([]string{
@@ -233,27 +234,10 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 					ServiceAccountName: opts.ServiceAccountName,
 					InitContainers: []corev1.Container{
 						generateDownloadContainer(buildOCIJobSecretName(opts.Name), downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
-						{
-							Name:  "convert",
-							Image: qemuImgImage,
-							Command: []string{
-								"/bin/sh",
-								"-c",
-								generateConvertScript(opts, downloadedFilename),
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  imageConfigEnvVar,
-									Value: generateImageConfig(opts),
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      tempVolumeMountVolumeMapping,
-									MountPath: tempVolumeMountPath,
-								},
-							},
-						},
+						generateConvertContainer(
+							[]string{"/bin/sh", "-c", generateConvertScript(opts, downloadedFilename)},
+							[]corev1.EnvVar{{Name: imageConfigEnvVar, Value: generateImageConfig(opts)}},
+						),
 					},
 					Containers: []corev1.Container{
 						{

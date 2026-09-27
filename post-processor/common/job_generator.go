@@ -162,6 +162,25 @@ func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl s
 	}
 }
 
+func generateConvertCommand(imageFormat, downloadedFile, convertedFile string) []string {
+	return []string{"qemu-img", "convert", "-f", "raw", "-O", imageFormat, downloadedFile, convertedFile}
+}
+
+func generateConvertContainer(command []string, env []corev1.EnvVar) corev1.Container {
+	return corev1.Container{
+		Name:    "convert",
+		Image:   qemuImgImage,
+		Command: command,
+		Env:     env,
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      tempVolumeMountVolumeMapping,
+				MountPath: tempVolumeMountPath,
+			},
+		},
+	}
+}
+
 func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
 	downloadedFilename := fmt.Sprintf("%s.img.gz", opts.Name)
 	filename := downloadedFilename
@@ -169,21 +188,8 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 	if opts.ImageFormat != "" {
 		downloadedFilename = fmt.Sprintf("%s.img", opts.Name)
 		filename = fmt.Sprintf("%s.%s", opts.Name, opts.ImageFormat)
-		convertContainers = append(convertContainers, corev1.Container{
-			Name:  "convert",
-			Image: qemuImgImage,
-			Command: []string{
-				"qemu-img", "convert", "-f", "raw", "-O", opts.ImageFormat,
-				path.Join(tempVolumeMountPath, downloadedFilename),
-				path.Join(tempVolumeMountPath, filename),
-			},
-			VolumeMounts: []corev1.VolumeMount{
-				{
-					Name:      tempVolumeMountVolumeMapping,
-					MountPath: tempVolumeMountPath,
-				},
-			},
-		})
+		convertCommand := generateConvertCommand(opts.ImageFormat, path.Join(tempVolumeMountPath, downloadedFilename), path.Join(tempVolumeMountPath, filename))
+		convertContainers = append(convertContainers, generateConvertContainer(convertCommand, nil))
 	}
 
 	objectFilename := filename
