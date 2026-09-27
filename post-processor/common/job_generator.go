@@ -44,7 +44,7 @@ func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.
 		exportTokenEnvVar:   opts.ExportServerToken,
 		exportServerPEMCert: opts.ExportServerCertificate,
 	}
-	if opts.AWSAccessKeyId != nil || opts.AWSSecretAccessKey != nil {
+	if opts.AWSAccessKeyId != nil && opts.AWSSecretAccessKey != nil {
 		stringData["AWS_ACCESS_KEY_ID"] = *opts.AWSAccessKeyId
 		stringData["AWS_SECRET_ACCESS_KEY"] = *opts.AWSSecretAccessKey
 	}
@@ -68,6 +68,11 @@ func buildJobSecretName(name string) string {
 func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
 	filename := fmt.Sprintf("%s.img.gz", opts.Name)
 
+	var serviceAccountName string
+	if opts.ServiceAccountName != nil {
+		serviceAccountName = *opts.ServiceAccountName
+	}
+
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("s3-uploader-%s", opts.Name),
@@ -79,7 +84,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					ServiceAccountName: *opts.ServiceAccountName,
+					ServiceAccountName: serviceAccountName,
 					InitContainers: []corev1.Container{
 						{
 							Name:  "download",
