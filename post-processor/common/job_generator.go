@@ -146,7 +146,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 					InitContainers: append([]corev1.Container{
 						{
 							Name:  "download",
-							Image: "curlimages/curl:8.10.1",
+							Image: "curlimages/curl:8.22.0",
 							Command: []string{
 								"/bin/sh",
 								"-c",
@@ -184,7 +184,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 					Containers: []corev1.Container{
 						{
 							Name:  "upload",
-							Image: "amazon/aws-cli:2.18.6",
+							Image: "amazon/aws-cli:2.36.49",
 							Command: []string{
 								"/bin/sh",
 								"-c",

@@ -165,10 +165,29 @@ func TestWaitForJobCompletionFailureReportsPodState(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a failure error")
 	}
-	for _, expected := range []string{"failed", pod.Name, "exit code 1"} {
+	for _, expected := range []string{"failed", pod.Name, "exit code 1", "fake logs"} {
 		if !strings.Contains(err.Error(), expected) {
 			t.Errorf("expected error to contain %q, got: %v", expected, err)
 		}
+	}
+}
+
+func TestWaitForJobCompletionReportsLatestPodOnly(t *testing.T) {
+	job, firstPod := newJobWithPod(corev1.ContainerState{
+		Terminated: &corev1.ContainerStateTerminated{Reason: "Error", ExitCode: 1},
+	})
+	firstPod.CreationTimestamp = metav1.NewTime(time.Now().Add(-time.Minute))
+	latestPod := firstPod.DeepCopy()
+	latestPod.Name = "base-ubuntu-libguestfs-latest"
+	latestPod.CreationTimestamp = metav1.Now()
+	client := fake.NewSimpleClientset(job, firstPod, latestPod)
+
+	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected a timeout error")
+	}
+	if !strings.Contains(err.Error(), latestPod.Name) || strings.Contains(err.Error(), firstPod.Name) {
+		t.Errorf("expected error to describe the latest pod only, got: %v", err)
 	}
 }
 

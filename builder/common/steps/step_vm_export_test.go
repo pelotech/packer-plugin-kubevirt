@@ -8,9 +8,11 @@ import (
 	"go.uber.org/mock/gomock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	exportv1 "kubevirt.io/api/export/v1beta1"
 	"kubevirt.io/client-go/kubecli"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
 	"packer-plugin-kubevirt/builder/common"
@@ -67,5 +69,50 @@ func TestStepExportVMRunsSysprepOnceVirtualMachineIsStopped(t *testing.T) {
 	}
 	if statusAtJobCreation != kubevirtv1.VirtualMachineStatusStopped {
 		t.Fatalf("expected the 'libguestfs' job to be created once the Virtual Machine is stopped, status was: '%s'", statusAtJobCreation)
+	}
+}
+
+func TestWaitForExportReadyIgnoresExportWithoutStatus(t *testing.T) {
+	export := &exportv1.VirtualMachineExport{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+	}
+	readyExport := export.DeepCopy()
+	readyExport.Status = &exportv1.VirtualMachineExportStatus{Phase: exportv1.Ready}
+
+	kubevirtClient := kubevirtfake.NewSimpleClientset()
+	watcher := watch.NewFake()
+	kubevirtClient.PrependWatchReactor("virtualmachineexports", k8stesting.DefaultWatchReactor(watcher, nil))
+	go func() {
+		watcher.Add(export)
+		watcher.Modify(readyExport)
+	}()
+
+	virtClient := kubecli.NewMockKubevirtClient(gomock.NewController(t))
+	virtClient.EXPECT().GeneratedKubeVirtClient().Return(kubevirtClient).AnyTimes()
+
+	step := &StepExportVM{VirtClient: virtClient, VmExportTimeOut: 5 * time.Second}
+	err := step.waitForExportReady(packersdk.TestUi(t), export)
+	if err != nil {
+		t.Fatalf("expected the Virtual Machine Export to be ready, got: %v", err)
+	}
+}
+
+func TestWaitForExportReadyClosedWatch(t *testing.T) {
+	export := &exportv1.VirtualMachineExport{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+	}
+
+	kubevirtClient := kubevirtfake.NewSimpleClientset()
+	watcher := watch.NewFake()
+	kubevirtClient.PrependWatchReactor("virtualmachineexports", k8stesting.DefaultWatchReactor(watcher, nil))
+	watcher.Stop()
+
+	virtClient := kubecli.NewMockKubevirtClient(gomock.NewController(t))
+	virtClient.EXPECT().GeneratedKubeVirtClient().Return(kubevirtClient).AnyTimes()
+
+	step := &StepExportVM{VirtClient: virtClient, VmExportTimeOut: 5 * time.Second}
+	err := step.waitForExportReady(packersdk.TestUi(t), export)
+	if err == nil {
+		t.Fatal("expected an error when the watch is closed before the Virtual Machine Export is ready")
 	}
 }

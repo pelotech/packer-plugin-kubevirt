@@ -127,7 +127,7 @@ func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts
 		}
 	case vm.Windows:
 		if opts.UserProvisioning.Sysprep != "" {
-			data["autounattend.xml"] = string(rawData)
+			data["autounattend.xml"] = opts.UserProvisioning.Sysprep
 		} else {
 			filename := "autounattend.xml"
 			rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
