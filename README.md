@@ -11,22 +11,19 @@ flowchart LR
     subgraph builder["Builder kubevirt-iso"]
         direction TB
         import["CDI imports the source"]
-        boot["The Virtual Machine boots<br/>boot command over VNC for a Windows ISO"]
+        boot["The Virtual Machine boots<br/>boot command over VNC<br/>for a Windows ISO"]
         provision["Provisioners over SSH or WinRM<br/>once the guest agent answers"]
         generalize["Generalize and stop<br/>Linux: virt-sysprep<br/>Windows: Sysprep"]
         export["Virtual Machine Export"]
         import --> boot --> provision --> generalize --> export
     end
 
-    subgraph postprocessors["Post-processors"]
-        direction TB
-        s3["kubevirt-s3<br/>gzip, qcow2, vmdk, vhdx, vdi"]
-        oci["kubevirt-oci<br/>containerDisk, qcow2 or raw"]
-        datasource["kubevirt-datasource<br/>imported by CDI"]
-    end
+    s3["kubevirt-s3<br/>gzip, qcow2, vmdk, vhdx, vdi"]
+    oci["kubevirt-oci<br/>containerDisk, qcow2 or raw"]
+    datasource["kubevirt-datasource<br/>imported by CDI"]
 
-    source --> import
-    export --> s3 & oci & datasource
+    source --> builder
+    builder --> s3 & oci & datasource
     s3 --> bucket[("S3 bucket")]
     oci --> registry[("Container registry<br/>preference in the image")]
     datasource --> ds[("DataSource<br/>preference as a label")]
