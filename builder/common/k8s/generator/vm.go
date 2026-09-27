@@ -176,7 +176,7 @@ func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMa
 }
 
 func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachine {
-	isRunning := true
+	runStrategy := kubevirtv1.RunStrategyAlways
 	disks := generateDisks(opts.OsFamily)
 	volumes := generateVolumes(opts)
 	probeExecCommand := buildProbeExecCommand(opts.OsFamily)
@@ -211,7 +211,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			Namespace: opts.Namespace,
 		},
 		Spec: kubevirtv1.VirtualMachineSpec{
-			Running: &isRunning,
+			RunStrategy: &runStrategy,
 			Preference: &kubevirtv1.PreferenceMatcher{
 				Kind: "VirtualMachineClusterPreference",
 				Name: opts.OsDistribution,
