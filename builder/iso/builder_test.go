@@ -293,3 +293,13 @@ func TestPrepareCommunicatorKeepsWinRMTimeout(t *testing.T) {
 		t.Errorf("expected a WinRM timeout of 30s, got: %s", comm.WinRMTimeout)
 	}
 }
+
+func TestRunReturnsAnErrorWhenCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	artifact, err := new(Builder).Run(ctx, packersdk.TestUi(t), &packersdk.MockHook{})
+	if artifact != nil || err == nil {
+		t.Fatalf("expected no artifact and an error for a cancelled build, got: %v, %v", artifact, err)
+	}
+}

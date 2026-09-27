@@ -5,6 +5,7 @@ package iso
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer-plugin-sdk/bootcommand"
@@ -251,6 +252,13 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 	err := appContext.GetPackerError()
 	if err != nil {
 		return nil, err
+	}
+	// a cancelled step halts without an error, and leaves no export to build an artifact from
+	if _, cancelled := state.GetOk(multistep.StateCancelled); cancelled {
+		return nil, errors.New("build was cancelled")
+	}
+	if _, halted := state.GetOk(multistep.StateHalted); halted {
+		return nil, errors.New("build was halted")
 	}
 
 	return appContext.BuildArtifact(builderId), nil
