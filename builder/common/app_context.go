@@ -4,7 +4,7 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	exportv1 "kubevirt.io/api/export/v1alpha1"
+	exportv1 "kubevirt.io/api/export/v1beta1"
 	"packer-plugin-kubevirt/builder/common/vm"
 )
 

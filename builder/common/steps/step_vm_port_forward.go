@@ -34,7 +34,7 @@ func (s *StepPortForwardVM) Run(ctx context.Context, state multistep.StateBag) m
 	vm := appContext.GetVirtualMachine()
 	pods, err := s.VirtClient.CoreV1().Pods(vm.Namespace).List(ctx, v1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(map[string]string{
-			kubevirtv1.VirtualMachineNameLabel: vm.Name,
+			kubevirtv1.DeprecatedVirtualMachineNameLabel: vm.Name,
 		}).String(),
 	})
 	if err != nil || len(pods.Items) < 1 {

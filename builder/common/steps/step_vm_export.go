@@ -110,17 +110,17 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 func (s *StepExportVM) createExport(ui packer.Ui, vm *kubevirtv1.VirtualMachine) (*exportv1.VirtualMachineExport, error) {
 	export := generator.GenerateVirtualMachineExport(vm)
 
-	_, err := s.VirtClient.VirtualMachineExport(vm.Namespace).Get(context.TODO(), export.Name, metav1.GetOptions{})
+	_, err := s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(vm.Namespace).Get(context.TODO(), export.Name, metav1.GetOptions{})
 	if k8serrors.IsAlreadyExists(err) {
 		err = common.AskForRecreation(ui, func() error {
-			return s.VirtClient.VirtualMachineExport(vm.Namespace).Delete(context.TODO(), export.Name, metav1.DeleteOptions{})
+			return s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(vm.Namespace).Delete(context.TODO(), export.Name, metav1.DeleteOptions{})
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	export, err = s.VirtClient.VirtualMachineExport(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
+	export, err = s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.Virtual
 	ctx, cancel := context.WithTimeout(context.TODO(), s.VmExportTimeOut)
 	defer cancel()
 
-	watcher, _ := s.VirtClient.VirtualMachineExport(export.Namespace).Watch(ctx, metav1.ListOptions{
+	watcher, _ := s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(export.Namespace).Watch(ctx, metav1.ListOptions{
 		FieldSelector: labels.SelectorFromSet(map[string]string{
 			"metadata.name": export.Name,
 		}).String(),
