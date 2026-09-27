@@ -20,8 +20,14 @@
     },
     {
       customType: "regex",
-      managerFilePatterns: ["/^\\.github/workflows/tests\\.yml$/"],
-      matchStrings: ["PRODUCT_VERSION: \"(?<currentValue>[^\"]+)\""],
+      managerFilePatterns: [
+        "/^\\.github/workflows/tests\\.yml$/",
+        "/^(docs|\\.web-docs)/README\\.md$/",
+      ],
+      matchStrings: [
+        "PRODUCT_VERSION: \"(?<currentValue>[^\"]+)\"",
+        "FROM hashicorp/packer:(?<currentValue>\\d+\\.\\d+\\.\\d+)",
+      ],
       depNameTemplate: "hashicorp/packer",
       datasourceTemplate: "github-releases",
       extractVersionTemplate: "^v(?<version>.+)$",

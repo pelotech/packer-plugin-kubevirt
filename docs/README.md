@@ -33,7 +33,7 @@ Each release is also published as a container image for `linux/amd64` and `linux
 The image only holds the plugin, laid out as a Packer plugin directory, to be copied into your own image:
 
 ```dockerfile
-FROM hashicorp/packer:1.11.2
+FROM hashicorp/packer:1.16.1
 COPY --from=ghcr.io/pelotech/packer-plugin-kubevirt:<version> / /root/.config/packer/plugins/
 ```
 
