@@ -11,7 +11,7 @@ The ISO builder is mostly used to create base VM images, an ISO or a cloud image
 The builder runs against the Kubernetes cluster of your current kube context, with KubeVirt 1.9 or later and CDI installed.
 Once provisioned, the Virtual Machine is stopped, Linux disks are generalized with `virt-sysprep`
 (running as a Kubernetes job in the cluster, nothing to install locally) and the disk is exposed through a Virtual Machine Export.
-Windows is generalized by your shutdown command, see [Windows](#windows).
+Windows is generalized by your shutdown command, see [Windows](#windows). `vm_skip_virt_sysprep` skips `virt-sysprep` for Linux.
 
 <!-- Builder Configuration Fields -->
 
@@ -62,6 +62,9 @@ Defaults to `10m`
 
 - `vm_export_timeout` (duration string) - Time out duration for each stage of the export: VM shutdown, `virt-sysprep` job (Linux only) and export server to be up and ready for download
 Defaults to `5m`
+
+- `vm_skip_virt_sysprep` (bool) - Skip the `virt-sysprep` job on Linux disks, the VM is still stopped before the export. It changes nothing for Windows, generalized by your shutdown command
+Defaults to `false`
 
 - `source_aws_access_key_id` (string) - AWS Access Key ID for S3 bucket containing VM images. Keys of an IAM user: temporary credentials are not supported, use a presigned URL as `source_url` instead
 Sensitive field - Defaults to empty string (will skip adding credentials)
