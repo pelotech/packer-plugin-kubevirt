@@ -6,7 +6,7 @@ Build virtual machine images on Kubernetes with [KubeVirt](https://kubevirt.io),
 
 1. The builder creates a Virtual Machine from an ISO or a cloud image and waits for the guest to be ready.
 2. Packer provisioners run in the guest over SSH or WinRM (shell, Ansible and so on).
-3. The Virtual Machine is stopped. Linux disks are generalized with `virt-sysprep`.
+3. The image is generalized and the Virtual Machine is stopped. Linux: the builder stops it, then runs `virt-sysprep` on the disk. Windows: Sysprep runs as your shutdown command and shuts it down.
 4. The disk is exposed through a Virtual Machine Export.
 5. Post-processors export the disk. Several can run on the same build.
 
@@ -18,12 +18,12 @@ Everything runs in the cluster, as Virtual Machines and jobs. Nothing else than 
 |---|---|---|
 | [kubevirt-iso](docs/builders/builder.mdx) | builder | Creates and provisions the Virtual Machine |
 | [kubevirt-s3](docs/post-processors/post-processor.mdx) | post-processor | Uploads the disk to S3 or S3-compatible storage, as it is or converted to `qcow2`, `vmdk`, `vhdx` or `vdi` |
-| [kubevirt-oci](docs/post-processors/oci.mdx) | post-processor | Pushes the disk to a container registry as a containerDisk image |
+| [kubevirt-oci](docs/post-processors/oci.mdx) | post-processor | Pushes the disk to a container registry as a containerDisk image, in `qcow2` or `raw` |
 | [kubevirt-datasource](docs/post-processors/datasource.mdx) | post-processor | Imports the disk into a volume of the cluster and points a DataSource to it |
 
 Images pushed by `kubevirt-oci` and DataSources created by `kubevirt-datasource` carry the preference of the build, so Virtual Machines created from them can infer it.
 
-Linux builds are covered by the integration test. Windows builds are not.
+Linux builds are covered by the integration test. Windows 11 has its own, started by hand.
 
 ## Requirements
 
@@ -102,6 +102,7 @@ This keeps the image in the cluster. To export it somewhere else as well, chain 
 ```
 
 The [Ubuntu example](example/ubuntu-26.04) is a complete template, the one built by the integration test.
+For Windows, start from the [Windows 11 example](example/windows-11) and read the [Windows section](docs/builders/builder.mdx#windows) of the builder.
 
 ## Documentation
 
@@ -154,6 +155,13 @@ gh workflow run tests.yml --ref <branch>
 ```
 
 The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket, pushed to a registry and imported behind a DataSource, all in the cluster, so the test needs no account. A Virtual Machine is then started from the DataSource to check that the image boots.
+
+The `test plugin with Windows` workflow builds the [Windows 11 example](example/windows-11) from its install ISO, with UEFI, Secure Boot and a TPM.
+It takes about 40 minutes, so it only runs on demand:
+
+```shell
+gh workflow run tests-windows.yml --ref <branch>
+```
 
 ### Release
 

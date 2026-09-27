@@ -6,6 +6,7 @@ import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -19,7 +20,9 @@ import (
 	kvcorev1 "kubevirt.io/client-go/kubevirt/typed/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -218,6 +221,35 @@ func WaitForVirtualMachineStopped(client kvcorev1.VirtualMachineInterface, name 
 	}
 
 	return nil
+}
+
+func WaitForVirtualMachineInstanceRunning(client kvcorev1.VirtualMachineInstanceInterface, name string, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(context.Background(), VirtualMachineStopPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
+		instance, err := client.Get(ctx, name, metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			// the instance is created once the volumes are imported
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return instance.Status.Phase == kubevirtv1.Running, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to wait for Virtual Machine Instance to be running: %w", err)
+	}
+
+	return nil
+}
+
+// OpenConsole opens the VNC console of a running Virtual Machine Instance
+func OpenConsole(clients *Clients, namespace, name string) (net.Conn, error) {
+	stream, err := kvcorev1.AsyncSubresourceHelper(clients.RestConfig, "virtualmachineinstances", namespace, name, "vnc", url.Values{})
+	if err != nil {
+		return nil, err
+	}
+
+	return stream.AsConn(), nil
 }
 
 func WaitForDataVolumeImport(clients *Clients, ui packersdk.Ui, dataVolume *cdiv1beta1.DataVolume, timeout time.Duration) error {

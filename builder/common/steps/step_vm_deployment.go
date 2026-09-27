@@ -4,22 +4,17 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
-	"github.com/hashicorp/packer-plugin-sdk/packer"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
-	"time"
 )
 
 type StepDeployVM struct {
-	Clients             *k8s.Clients
-	VmOptions           generator.VirtualMachineOptions
-	VmDeploymentTimeOut time.Duration
+	Clients   *k8s.Clients
+	VmOptions generator.VirtualMachineOptions
 }
 
 func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -67,38 +62,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		}
 	}
 
-	err = s.waitForVirtualMachine(ui, vm)
-	if err != nil {
-		return appContext.Halt(fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine %s/%s: %s", ns, name, err))
-	}
-
-	ui.Say(fmt.Sprintf("deployment step has completed for Virtual Machine %s/%s", ns, name))
-
 	return multistep.ActionContinue
-}
-
-func (s *StepDeployVM) waitForVirtualMachine(ui packer.Ui, vm *kubevirtv1.VirtualMachine) error {
-	watchFunc := func(event watch.Event) (bool, error) {
-		vm, ok := event.Object.(*kubevirtv1.VirtualMachine)
-		if !ok {
-			return false, fmt.Errorf("unexpected type for %v", event.Object)
-		}
-		for index, condition := range vm.Status.Conditions {
-			if condition.Type == kubevirtv1.VirtualMachineReady && condition.Status == corev1.ConditionTrue {
-				return true, nil
-			} else if index == len(vm.Status.Conditions)-1 {
-				ui.Message(fmt.Sprintf("condition '%s' is '%s'", condition.Type, condition.Status))
-				ui.Message(fmt.Sprintf("message: %s", condition.Message))
-			}
-		}
-		return false, nil
-	}
-	err := k8s.WaitForResource(s.Clients.Kubevirt.KubevirtV1().RESTClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmDeploymentTimeOut, watchFunc)
-	if err != nil {
-		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", vm.Namespace, vm.Name, err)
-	}
-
-	return nil
 }
 
 // Cleanup doesn't delete the node pool and namespace, it may contain other resources that are not created by this build context
