@@ -99,7 +99,7 @@ This keeps the image in the cluster. To export it somewhere else as well, chain 
   }
 ```
 
-The [example](example) is a complete template. Its Linux source is the one built by the integration test.
+The [Ubuntu example](example/ubuntu-26.04) is a complete template, the one built by the integration test.
 For Windows, start from the [Windows 11 example](example/windows-11) and read the [Windows section](docs/builders/builder.mdx#windows) of the builder.
 
 ## Documentation
@@ -121,7 +121,7 @@ packer plugins install --path ./packer-plugin-kubevirt "github.com/pelotech/kube
 Run the example. With `-debug` Packer pauses between each step:
 
 ```shell
-PACKER_LOG=1 packer build -debug ./example
+PACKER_LOG=1 packer build -debug ./example/ubuntu-26.04
 ```
 
 Regenerate the HCL specifications and the web docs after a change of a configuration or of the docs:
@@ -138,7 +138,7 @@ Unit tests:
 go test ./...
 ```
 
-The integration test builds the [example](example) on a KinD cluster with KubeVirt and CDI, in the `test plugin` workflow.
+The integration test builds the [Ubuntu example](example/ubuntu-26.04) on a KinD cluster with KubeVirt and CDI, in the `test plugin` workflow.
 A push to a branch builds it once per export, side by side. A push to `main` builds it once with the three exports in a row.
 It also runs on demand, both ways:
 
