@@ -7,23 +7,8 @@ packer {
   }
 }
 
-locals {
-  images = {
-    linux = [
-      {
-        name               = "base-ubuntu-2604"
-        os_distribution    = "ubuntu"
-        url                = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
-        disk_space         = "4Gi"
-        deployment_timeout = "15m"
-        export_timeout     = "10m"
-      }
-    ]
-  }
-}
-
 source "kubevirt-iso" "linux" {
-  kubernetes_name      = local.images.linux.0.name
+  kubernetes_name      = "base-ubuntu-2604"
   kubernetes_namespace = "${var.kubernetes_namespace}-linux"
   kubernetes_node_selectors = {
     "kubevirt.io/schedulable" = "true"
@@ -36,15 +21,15 @@ source "kubevirt-iso" "linux" {
       effect   = "NoSchedule"
     }
   ]
-  kubevirt_os_preference = local.images.linux.0.os_distribution
-  vm_disk_space          = local.images.linux.0.disk_space
+  kubevirt_os_preference = "ubuntu"
+  vm_disk_space          = "4Gi"
   vm_cpu                 = var.vm_cpu    # Optional, default to '4'
   vm_memory              = var.vm_memory # Optional, default to '8Gi'
   vm_linux_cloud_init    = file("${path.root}/cloud-init.yaml")
   # Optional (default file will be picked up)
-  vm_deployment_timeout        = local.images.linux.0.deployment_timeout # Optional, default to '10m'
-  vm_export_timeout            = local.images.linux.0.export_timeout     # Optional, default to '5m'
-  source_url                   = local.images.linux.0.url
+  vm_deployment_timeout        = "15m" # Optional, default to '10m'
+  vm_export_timeout            = "10m" # Optional, default to '5m'
+  source_url                   = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
   source_aws_access_key_id     = var.source_aws_access_key_id     # Optional
   source_aws_secret_access_key = var.source_aws_secret_access_key # Optional
   communicator                 = "ssh"                            # Optional, default to 'ssh'
