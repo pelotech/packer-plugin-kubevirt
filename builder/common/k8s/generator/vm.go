@@ -30,6 +30,8 @@ type VirtualMachineOptions struct {
 	OsDistribution   string
 	OsFamily         vm.OsFamily
 	DiskSpace        string
+	CPU              string
+	Memory           string
 	ImageSource      ImageSource
 	UserProvisioning UserProvisioning
 	Credentials      *AccessCredentials
@@ -246,8 +248,8 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 					Domain: kubevirtv1.DomainSpec{
 						Resources: kubevirtv1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("4"),
-								corev1.ResourceMemory: resource.MustParse("8Gi"),
+								corev1.ResourceCPU:    resource.MustParse(opts.CPU),
+								corev1.ResourceMemory: resource.MustParse(opts.Memory),
 							},
 						},
 						Devices: kubevirtv1.Devices{
