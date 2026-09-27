@@ -31,7 +31,8 @@ Windows is generalized by your shutdown command, see [Windows](#windows).
 
 - `kubernetes_namespace` (string) - Kubernetes namespace used to provision and export virtual machines
 
-- `source_url` (string) - URL of the ISO or cloud image used as the starting point (HTTP or S3)
+- `source_url` (string) - URL of the ISO or cloud image used as the starting point. It is read from inside the cluster, over HTTP or HTTPS.
+With `source_aws_access_key_id` and `source_aws_secret_access_key` it is read from S3, and has to be `https://s3.<region>.amazonaws.com/<bucket>/<key>`
 
 - `kubevirt_os_preference` (string) - KubeVirt VM preference to apply to the VM. List of preferences available [here](https://github.com/kubevirt/common-instancetypes/tree/main/preferences).
 A preference containing `windows` selects the Windows installation flow, any other value selects the Linux one
@@ -72,7 +73,7 @@ Defaults to `10m`
 - `vm_export_timeout` (duration string) - Time out duration for each stage of the export: VM shutdown, `virt-sysprep` job (Linux only) and export server to be up and ready for download
 Defaults to `5m`
 
-- `source_aws_access_key_id` (string) - AWS Access Key ID for S3 bucket containing VM images
+- `source_aws_access_key_id` (string) - AWS Access Key ID for S3 bucket containing VM images. Keys of an IAM user: temporary credentials are not supported, use a presigned URL as `source_url` instead
 Sensitive field - Defaults to empty string (will skip adding credentials)
 
 - `source_aws_secret_access_key` (string) - AWS Secret Access Key for S3 bucket containing VM images
