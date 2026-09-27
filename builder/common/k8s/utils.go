@@ -12,14 +12,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/portforward"
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/client-go/transport/spdy"
 	"k8s.io/utils/pointer"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	"kubevirt.io/client-go/kubecli"
 	kvcorev1 "kubevirt.io/client-go/kubevirt/typed/core/v1"
 	"log"
 	"net/http"
@@ -34,12 +32,12 @@ const (
 	ContainerLogsTailLines         = 10
 )
 
-func RunAsyncPortForward(client kubecli.KubevirtClient, podName, namespace string, ports []string) (chan struct{}, error) {
+func RunAsyncPortForward(clients *Clients, podName, namespace string, ports []string) (chan struct{}, error) {
 	stopChan := make(chan struct{}, 1)
 	readyChan := make(chan struct{})
 
 	go func() {
-		err := runPortForward(client, podName, namespace, ports, readyChan, stopChan)
+		err := runPortForward(clients, podName, namespace, ports, readyChan, stopChan)
 		if err != nil {
 			log.Printf("error while running port forwarding: %v", err)
 		}
@@ -55,15 +53,15 @@ func RunAsyncPortForward(client kubecli.KubevirtClient, podName, namespace strin
 	return stopChan, nil
 }
 
-func runPortForward(client kubecli.KubevirtClient, podName, namespace string, ports []string, ready, stop chan struct{}) error {
-	url := client.CoreV1().RESTClient().Post().
+func runPortForward(clients *Clients, podName, namespace string, ports []string, ready, stop chan struct{}) error {
+	url := clients.Kubernetes.CoreV1().RESTClient().Post().
 		Namespace(namespace).
 		Resource("pods").
 		Name(podName).
 		SubResource("portforward").
 		URL()
 
-	roundTripper, upgrader, err := spdy.RoundTripperFor(client.Config())
+	roundTripper, upgrader, err := spdy.RoundTripperFor(clients.RestConfig)
 	if err != nil {
 		return err
 	}
@@ -79,7 +77,7 @@ func runPortForward(client kubecli.KubevirtClient, podName, namespace string, po
 
 type HandleEventFunc func(context.Context, watch.Event) (bool, error)
 
-func WaitForResource(client *rest.RESTClient, namespace, resource, name, version string, timeout time.Duration, handleEvent watchtools.ConditionFunc) (*watch.Event, error) {
+func WaitForResource(client cache.Getter, namespace, resource, name, version string, timeout time.Duration, handleEvent watchtools.ConditionFunc) (*watch.Event, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
 	defer cancel()
 

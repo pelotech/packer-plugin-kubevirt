@@ -43,24 +43,7 @@
   ],
   packageRules: [
     {
-      // kubevirt.io/client-go v1.9 only builds against Kubernetes 0.34
-      matchDatasources: ["go"],
-      matchPackageNames: [
-        "k8s.io/api",
-        "k8s.io/apiextensions-apiserver",
-        "k8s.io/apimachinery",
-        "k8s.io/client-go",
-      ],
-      allowedVersions: "<0.35.0",
-    },
-    {
-      // controller-runtime v0.22 is the release built against Kubernetes 0.34
-      matchDatasources: ["go"],
-      matchPackageNames: ["sigs.k8s.io/controller-runtime"],
-      allowedVersions: "<0.23.0",
-    },
-    {
-      // pinned by a replace directive to the version Kubernetes 0.34 requires
+      // pinned by a replace directive to the version k8s.io/apimachinery requires
       matchDatasources: ["go"],
       matchPackageNames: ["k8s.io/kube-openapi"],
       enabled: false,

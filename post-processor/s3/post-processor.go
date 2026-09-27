@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/post-processor/common"
@@ -33,8 +32,8 @@ type Config struct {
 }
 
 type PostProcessor struct {
-	config     Config
-	virtClient kubecli.KubevirtClient
+	config  Config
+	clients *k8s.Clients
 }
 
 func (p *PostProcessor) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
@@ -57,7 +56,7 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 		return err
 	}
 
-	p.virtClient, err = k8s.GetKubevirtClient()
+	p.clients, err = k8s.GetKubevirtClient()
 	if err != nil {
 		return err
 	}
@@ -78,7 +77,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	name := source.State(buildercommon.VirtualMachineExportNameArtifactKey).(string)
 	token := source.State(buildercommon.VirtualMachineExportTokenArtifactKey).(string)
 
-	export, err := p.virtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	export, err := p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
 	}
@@ -110,18 +109,18 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	}
 
 	job := common.GenerateS3UploaderJob(export, options)
-	job, err = p.virtClient.BatchV1().Jobs(export.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	job, err = p.clients.Kubernetes.BatchV1().Jobs(export.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 	if err != nil {
 		return nil, true, true, fmt.Errorf("failed to deploy S3 uploader job: %w", err)
 	}
 
 	secret := common.GenerateS3UploaderSecret(job, options)
-	_, err = p.virtClient.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
+	_, err = p.clients.Kubernetes.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
 	if err != nil {
 		return nil, true, true, fmt.Errorf("failed to create S3 uploader secret: %w", err)
 	}
 
-	err = k8s.WaitForJobCompletion(p.virtClient, ui, job, p.config.UploadTimeOut)
+	err = k8s.WaitForJobCompletion(p.clients.Kubernetes, ui, job, p.config.UploadTimeOut)
 	if err != nil {
 		return nil, true, true, fmt.Errorf("error with 'S3 uploader' job: %w", err)
 	}
@@ -130,7 +129,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 }
 
 func (p *PostProcessor) cleanupResources(ui packersdk.Ui, ns, name string) {
-	err := p.virtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err == nil {
 		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", ns, name))
 	} else {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
-	"go.uber.org/mock/gomock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -13,9 +12,9 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1beta1"
-	"kubevirt.io/client-go/kubecli"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
 	"packer-plugin-kubevirt/builder/common"
+	"packer-plugin-kubevirt/builder/common/k8s"
 	vmctx "packer-plugin-kubevirt/builder/common/vm"
 	"testing"
 	"time"
@@ -51,17 +50,13 @@ func TestStepExportVMRunsSysprepOnceVirtualMachineIsStopped(t *testing.T) {
 		return true, nil, errors.New("halt the step once the job creation is reached")
 	})
 
-	virtClient := kubecli.NewMockKubevirtClient(gomock.NewController(t))
-	virtClient.EXPECT().VirtualMachine(vm.Namespace).Return(vmClient).AnyTimes()
-	virtClient.EXPECT().BatchV1().Return(kubeClient.BatchV1()).AnyTimes()
-
 	osFamily := vmctx.Linux
 	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
 	appContext.Put(common.PackerUi, packersdk.TestUi(t))
 	appContext.Put(common.VirtualMachine, vm)
 	appContext.Put(common.VirtualMachineOsFamily, &osFamily)
 
-	step := &StepExportVM{VirtClient: virtClient, VmExportTimeOut: 5 * time.Second}
+	step := &StepExportVM{Clients: &k8s.Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
 	action := step.Run(context.Background(), appContext.State)
 
 	if action != multistep.ActionHalt {
@@ -87,10 +82,7 @@ func TestWaitForExportReadyIgnoresExportWithoutStatus(t *testing.T) {
 		watcher.Modify(readyExport)
 	}()
 
-	virtClient := kubecli.NewMockKubevirtClient(gomock.NewController(t))
-	virtClient.EXPECT().GeneratedKubeVirtClient().Return(kubevirtClient).AnyTimes()
-
-	step := &StepExportVM{VirtClient: virtClient, VmExportTimeOut: 5 * time.Second}
+	step := &StepExportVM{Clients: &k8s.Clients{Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
 	err := step.waitForExportReady(packersdk.TestUi(t), export)
 	if err != nil {
 		t.Fatalf("expected the Virtual Machine Export to be ready, got: %v", err)
@@ -107,10 +99,7 @@ func TestWaitForExportReadyClosedWatch(t *testing.T) {
 	kubevirtClient.PrependWatchReactor("virtualmachineexports", k8stesting.DefaultWatchReactor(watcher, nil))
 	watcher.Stop()
 
-	virtClient := kubecli.NewMockKubevirtClient(gomock.NewController(t))
-	virtClient.EXPECT().GeneratedKubeVirtClient().Return(kubevirtClient).AnyTimes()
-
-	step := &StepExportVM{VirtClient: virtClient, VmExportTimeOut: 5 * time.Second}
+	step := &StepExportVM{Clients: &k8s.Clients{Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
 	err := step.waitForExportReady(packersdk.TestUi(t), export)
 	if err == nil {
 		t.Fatal("expected an error when the watch is closed before the Virtual Machine Export is ready")

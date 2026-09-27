@@ -10,17 +10,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 )
 
 type StepDeployVM struct {
-	KubeClient          client.Client
-	VirtClient          kubecli.KubevirtClient
+	Clients             *k8s.Clients
 	VmOptions           generator.VirtualMachineOptions
 	VmDeploymentTimeOut time.Duration
 }
@@ -32,7 +29,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 	name := s.VmOptions.Name
 
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
-	_, err := s.VirtClient.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
+	_, err := s.Clients.Kubernetes.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
 	if err != nil && !errors.IsAlreadyExists(err) {
 		err := fmt.Errorf("failed to create namespace for Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
@@ -43,7 +40,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 	ui.Say(fmt.Sprintf("creating Virtual Machine %s/%s...", ns, name))
 	vm := generator.GenerateVirtualMachine(s.VmOptions)
-	vm, err = s.VirtClient.VirtualMachine(ns).Create(context.TODO(), vm, metav1.CreateOptions{})
+	vm, err = s.Clients.Kubevirt.KubevirtV1().VirtualMachines(ns).Create(context.TODO(), vm, metav1.CreateOptions{})
 	if err != nil {
 		err := fmt.Errorf("failed to create Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
@@ -55,7 +52,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 	if s.VmOptions.ImageSource.AWSAccessKeyId != "" && s.VmOptions.ImageSource.AWSSecretAccessKey != "" {
 		s3CredentialsSecret := generator.GenerateS3CredentialsSecret(vm, s.VmOptions)
-		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), s3CredentialsSecret, metav1.CreateOptions{})
+		_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(context.TODO(), s3CredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
 			err := fmt.Errorf("failed to create s3 credentials secret for Virtual Machine %s/%s: %s", ns, name, err)
 			appContext.Put(common.PackerError, err)
@@ -73,7 +70,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 		return multistep.ActionHalt
 	}
-	_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
+	_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
 	if err != nil {
 		err := fmt.Errorf("failed to create startup script secret for Virtual Machine %s/%s: %s", ns, name, err)
 		appContext.Put(common.PackerError, err)
@@ -84,7 +81,7 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 	if s.VmOptions.Credentials != nil {
 		userCredentialsSecret := generator.GenerateUserCredentialsSecret(vm, s.VmOptions)
-		_, err = s.VirtClient.CoreV1().Secrets(ns).Create(context.TODO(), userCredentialsSecret, metav1.CreateOptions{})
+		_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(context.TODO(), userCredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
 			err := fmt.Errorf("failed to create user credentials secret for Virtual Machine %s/%s: %s", ns, name, err)
 			appContext.Put(common.PackerError, err)
@@ -124,7 +121,7 @@ func (s *StepDeployVM) waitForVirtualMachine(ui packer.Ui, vm *kubevirtv1.Virtua
 		}
 		return false, nil
 	}
-	_, err := k8s.WaitForResource(s.VirtClient.RestClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmDeploymentTimeOut, watchFunc)
+	_, err := k8s.WaitForResource(s.Clients.Kubevirt.KubevirtV1().RESTClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmDeploymentTimeOut, watchFunc)
 	if err != nil {
 		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", vm.Namespace, vm.Name, err)
 	}
@@ -141,7 +138,7 @@ func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 	}
 
 	propagationPolicy := metav1.DeletePropagationForeground
-	_ = s.VirtClient.VirtualMachine(vm.Namespace).Delete(context.TODO(), vm.Name, metav1.DeleteOptions{
+	_ = s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace).Delete(context.TODO(), vm.Name, metav1.DeleteOptions{
 		PropagationPolicy: &propagationPolicy,
 	})
 	appContext.GetPackerUi().Message(fmt.Sprintf("Virtual Machine %s/%s has been deleted", vm.Namespace, vm.Name))

@@ -2,10 +2,10 @@ package k8s
 
 import (
 	"fmt"
-	"github.com/spf13/pflag"
+	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/client-go/kubevirt"
 	"os"
 )
 
@@ -14,38 +14,50 @@ const (
 	VirtualMachineExportKind   = "VirtualMachineExport"
 )
 
-func GetKubevirtClient() (kubecli.KubevirtClient, error) {
-	var client kubecli.KubevirtClient
+type Clients struct {
+	Kubernetes kubernetes.Interface
+	Kubevirt   kubevirt.Interface
+	RestConfig *restclient.Config
+}
+
+func GetKubevirtClient() (*Clients, error) {
+	var config *restclient.Config
 	var err error
 
 	_, ciEnvExists := os.LookupEnv("CI")
 	_, configEnvExists := os.LookupEnv(clientcmd.RecommendedConfigPathEnvVar)
 	configFile, err := os.Stat(clientcmd.RecommendedHomeFile)
 	if ciEnvExists || configEnvExists || configFile != nil {
-		var config *restclient.Config
-		config, err = kubecli.DefaultClientConfig(&pflag.FlagSet{}).ClientConfig()
+		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+		loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
+		overrides := &clientcmd.ConfigOverrides{ClusterDefaults: clientcmd.ClusterDefaults}
+		config, err = clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, overrides, os.Stdin).ClientConfig()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create default kube config: %w", err)
 		}
-
-		client, err = kubecli.GetKubevirtClientFromRESTConfig(config)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create kube client: %w", err)
-		}
-
 	} else {
-		client, err = kubecli.GetKubevirtClientFromFlags("", "")
+		config, err = restclient.InClusterConfig()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create in-cluster kube client: %w", err)
 		}
 	}
 
-	version, err := client.Discovery().ServerVersion()
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kube client: %w", err)
+	}
+
+	kubevirtClient, err := kubevirt.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kubevirt client: %w", err)
+	}
+
+	version, err := kubeClient.Discovery().ServerVersion()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve server version: %w", err)
 	} else {
 		fmt.Printf("Server version: %s\n", version.String())
 	}
 
-	return client, nil
+	return &Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient, RestConfig: config}, nil
 }
