@@ -28,27 +28,49 @@ import (
 
 const (
 	PortFowardTimeout              = 5 * time.Second
+	PortForwardRetryInterval       = time.Second
+	PortForwardAddress             = "127.0.0.1"
 	VirtualMachineStopPollInterval = time.Second
 	ContainerLogsTailLines         = 10
 )
 
 func RunAsyncPortForward(clients *Clients, podName, namespace string, ports []string) (chan struct{}, error) {
+	return forwardPortsUntilStopped(func(ready, stop chan struct{}) error {
+		return runPortForward(clients, podName, namespace, ports, ready, stop)
+	}, PortFowardTimeout, PortForwardRetryInterval)
+}
+
+func forwardPortsUntilStopped(forwardPorts func(ready, stop chan struct{}) error, readyTimeout, retryInterval time.Duration) (chan struct{}, error) {
 	stopChan := make(chan struct{}, 1)
 	readyChan := make(chan struct{})
+	endChan := make(chan error, 1)
 
 	go func() {
-		err := runPortForward(clients, podName, namespace, ports, readyChan, stopChan)
-		if err != nil {
-			log.Printf("error while running port forwarding: %v", err)
-		}
+		endChan <- forwardPorts(readyChan, stopChan)
 	}()
 
 	select {
 	case <-readyChan:
 		log.Printf("Port forwarding is ready.")
-	case <-time.After(PortFowardTimeout):
+	case err := <-endChan:
+		return nil, err
+	case <-time.After(readyTimeout):
+		close(stopChan)
 		return nil, fmt.Errorf("timeout waiting for port forwarding to be ready")
 	}
+
+	go func() {
+		err := <-endChan
+		for {
+			select {
+			case <-stopChan:
+				return
+			case <-time.After(retryInterval):
+			}
+			log.Printf("port forwarding ended, setting it up again: %v", err)
+			err = forwardPorts(make(chan struct{}), stopChan)
+		}
+	}()
 
 	return stopChan, nil
 }
@@ -67,7 +89,7 @@ func runPortForward(clients *Clients, podName, namespace string, ports []string,
 	}
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: roundTripper}, http.MethodPost, url)
 
-	forwarder, err := portforward.New(dialer, ports, stop, ready, os.Stdout, os.Stderr)
+	forwarder, err := portforward.NewOnAddresses(dialer, []string{PortForwardAddress}, ports, stop, ready, os.Stdout, os.Stderr)
 	if err != nil {
 		return err
 	}

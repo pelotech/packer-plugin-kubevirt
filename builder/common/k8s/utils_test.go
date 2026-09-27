@@ -2,17 +2,28 @@ package k8s
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/httpstream"
+	"k8s.io/apimachinery/pkg/util/httpstream/spdy"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	restclient "k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/portforward"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -224,5 +235,128 @@ func TestWaitForVirtualMachineStopped(t *testing.T) {
 	err = WaitForVirtualMachineStopped(client, vm.Name, 5*time.Second)
 	if err != nil {
 		t.Fatalf("expected Virtual Machine to be seen as stopped, got: %v", err)
+	}
+}
+
+func TestPortForwardReturnsErrorBeforeTimeout(t *testing.T) {
+	forwardingError := errors.New("pods \"virt-launcher-base-ubuntu\" is forbidden")
+	start := time.Now()
+
+	_, err := forwardPortsUntilStopped(func(ready, stop chan struct{}) error {
+		return forwardingError
+	}, 5*time.Second, time.Millisecond)
+
+	if !errors.Is(err, forwardingError) {
+		t.Errorf("expected the forwarding error, got: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("expected the error without waiting for the timeout, waited: %s", elapsed)
+	}
+}
+
+func TestPortForwardIsStoppedOnTimeout(t *testing.T) {
+	stopped := make(chan struct{})
+
+	_, err := forwardPortsUntilStopped(func(ready, stop chan struct{}) error {
+		<-stop
+		close(stopped)
+		return nil
+	}, 10*time.Millisecond, time.Millisecond)
+
+	if err == nil || !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("expected a timeout error, got: %v", err)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Error("expected port forwarding to be stopped after the timeout")
+	}
+}
+
+func TestPortForwardIsSetUpAgainUntilStopped(t *testing.T) {
+	retryInterval := 10 * time.Millisecond
+	var attempts atomic.Int32
+	connectionLost := make(chan struct{})
+	forwardingAgain := make(chan struct{})
+
+	stop, err := forwardPortsUntilStopped(func(ready, stop chan struct{}) error {
+		close(ready)
+		if attempts.Add(1) == 1 {
+			<-connectionLost
+			return errors.New("lost connection to pod")
+		}
+		close(forwardingAgain)
+		<-stop
+		return nil
+	}, 5*time.Second, retryInterval)
+	if err != nil {
+		t.Fatalf("expected port forwarding to be ready, got: %v", err)
+	}
+
+	close(connectionLost)
+	select {
+	case <-forwardingAgain:
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected port forwarding to be set up again after its error")
+	}
+	close(stop)
+	time.Sleep(10 * retryInterval)
+	if count := attempts.Load(); count != 2 {
+		t.Errorf("expected no attempt once stopped, got %d attempts", count)
+	}
+}
+
+func TestPortForwardWaitsBetweenAttempts(t *testing.T) {
+	retryInterval := 20 * time.Millisecond
+	var attempts atomic.Int32
+	connectionLost := make(chan struct{})
+
+	stop, err := forwardPortsUntilStopped(func(ready, stop chan struct{}) error {
+		if attempts.Add(1) == 1 {
+			close(ready)
+			<-connectionLost
+		}
+		return errors.New("pod is not running")
+	}, 5*time.Second, retryInterval)
+	if err != nil {
+		t.Fatalf("expected port forwarding to be ready, got: %v", err)
+	}
+
+	close(connectionLost)
+	time.Sleep(10 * retryInterval)
+	close(stop)
+	if count := attempts.Load(); count < 2 || count > 11 {
+		t.Errorf("expected an attempt every %s, got %d attempts in %s", retryInterval, count, 10*retryInterval)
+	}
+}
+
+func TestPortForwardRefusesLocalPortInUse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if _, err := httpstream.Handshake(request, response, []string{portforward.PortForwardProtocolV1Name}); err != nil {
+			return
+		}
+		connection := spdy.NewResponseUpgrader().UpgradeResponse(response, request, httpstream.NoOpNewStreamHandler)
+		if connection != nil {
+			<-connection.CloseChan()
+		}
+	}))
+	defer server.Close()
+	config := &restclient.Config{Host: server.URL}
+	client, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		t.Fatalf("failed to create the client: %v", err)
+	}
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	defer listener.Close()
+	portMapping := fmt.Sprintf("%d:22", listener.Addr().(*net.TCPAddr).Port)
+
+	stop, err := RunAsyncPortForward(&Clients{Kubernetes: client, RestConfig: config}, "virt-launcher-base-ubuntu", "packer", []string{portMapping})
+	if err == nil {
+		close(stop)
+		t.Fatal("expected an error when the local port is in use on 127.0.0.1")
 	}
 }
