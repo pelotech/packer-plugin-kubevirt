@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	gossh "golang.org/x/crypto/ssh"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"kubevirt.io/client-go/kubecli"
@@ -45,6 +46,8 @@ type Config struct {
 	SourceAWSAccessKeyId            string              `mapstructure:"source_aws_access_key_id" required:"false"`
 	SourceAWSSecretAccessKey        string              `mapstructure:"source_aws_secret_access_key" required:"false"`
 	VirtualMachineDiskSpace         string              `mapstructure:"vm_disk_space"`
+	VirtualMachineCPU               string              `mapstructure:"vm_cpu" required:"false"`
+	VirtualMachineMemory            string              `mapstructure:"vm_memory" required:"false"`
 	VirtualMachineDeploymentTimeOut time.Duration       `mapstructure:"vm_deployment_timeout" required:"false"`
 	VirtualMachineExportTimeOut     time.Duration       `mapstructure:"vm_export_timeout" required:"false"`
 	VirtualMachineLinuxCloudInit    string              `mapstructure:"vm_linux_cloud_init" required:"false"`
@@ -79,6 +82,20 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 
 	if b.config.VirtualMachineExportTimeOut == 0 {
 		b.config.VirtualMachineExportTimeOut = 5 * time.Minute
+	}
+
+	if b.config.VirtualMachineCPU == "" {
+		b.config.VirtualMachineCPU = "4"
+	}
+	if _, err = resource.ParseQuantity(b.config.VirtualMachineCPU); err != nil {
+		return nil, nil, fmt.Errorf("invalid 'vm_cpu' value '%s': %s", b.config.VirtualMachineCPU, err)
+	}
+
+	if b.config.VirtualMachineMemory == "" {
+		b.config.VirtualMachineMemory = "8Gi"
+	}
+	if _, err = resource.ParseQuantity(b.config.VirtualMachineMemory); err != nil {
+		return nil, nil, fmt.Errorf("invalid 'vm_memory' value '%s': %s", b.config.VirtualMachineMemory, err)
 	}
 
 	if b.config.Comm.Type == "" {
@@ -160,6 +177,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 				OsDistribution: b.config.KubevirtOsPreference,
 				OsFamily:       osFamily,
 				DiskSpace:      b.config.VirtualMachineDiskSpace,
+				CPU:            b.config.VirtualMachineCPU,
+				Memory:         b.config.VirtualMachineMemory,
 				ImageSource: generator.ImageSource{
 					URL:                b.config.SourceUrl,
 					AWSAccessKeyId:     b.config.SourceAWSAccessKeyId,
