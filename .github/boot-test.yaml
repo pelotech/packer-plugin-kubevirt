@@ -17,6 +17,8 @@ spec:
           kind: DataSource
           name: base-ubuntu
         storage:
+          accessModes:
+            - ReadWriteOnce
           resources:
             requests:
               storage: 4Gi
