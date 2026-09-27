@@ -90,7 +90,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	if err != nil {
 		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
 	}
-	defer p.cleanupExport(ui, ns, name)
+	defer common.DeleteOrKeepExport(p.clients, ui, ns, name, p.config.KeepExport)
 
 	exportServerUrl := common.FindVolumeUrl(export, "")
 	if exportServerUrl == "" {
@@ -196,18 +196,4 @@ func (p *PostProcessor) applyDataSource(options common.DataSourceOptions) error 
 	maps.Copy(existing.Labels, dataSource.Labels)
 	_, err = dataSources.Update(context.TODO(), existing, metav1.UpdateOptions{})
 	return err
-}
-
-func (p *PostProcessor) cleanupExport(ui packersdk.Ui, ns, name string) {
-	if p.config.KeepExport {
-		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been kept", ns, name))
-		return
-	}
-
-	err := p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
-	if err == nil {
-		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", ns, name))
-	} else {
-		ui.Error(fmt.Sprintf("failed to delete Virtual Machine Export %s/%s: %v", ns, name, err))
-	}
 }
