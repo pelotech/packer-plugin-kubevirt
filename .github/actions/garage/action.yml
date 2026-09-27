@@ -1,0 +1,38 @@
+name: Garage
+description: >
+  A single node Garage in the cluster, with a bucket and a key. The key is exported as the S3
+  credentials of the Packer examples.
+inputs:
+  bucket:
+    description: Name of the bucket
+    required: true
+  capacity:
+    description: Storage given to Garage
+    default: 10G
+runs:
+  using: composite
+  steps:
+    - name: garage install
+      shell: bash
+      env:
+        BUCKET: ${{ inputs.bucket }}
+        CAPACITY: ${{ inputs.capacity }}
+      run: |
+        kubectl create namespace garage
+        kubectl create secret generic garage --namespace garage --from-literal=rpc-secret="$(openssl rand -hex 32)"
+        kubectl apply -f "${GITHUB_ACTION_PATH}/garage.yaml"
+        kubectl rollout status deployment/garage --namespace garage --timeout=5m
+
+        garage() { kubectl exec --namespace garage deployment/garage -- /garage "$@"; }
+        garage layout assign --zone kind --capacity "${CAPACITY}" "$(garage node id -q)"
+        garage layout apply --version 1
+
+        access_key_id="GK$(openssl rand -hex 12)"
+        secret_access_key="$(openssl rand -hex 32)"
+        echo "::add-mask::${secret_access_key}"
+        garage key import --yes -n packer "${access_key_id}" "${secret_access_key}" > /dev/null
+        garage bucket create "${BUCKET}"
+        garage bucket allow --read --write "${BUCKET}" --key packer
+
+        echo "PKR_VAR_destination_aws_access_key_id=${access_key_id}" >> "${GITHUB_ENV}"
+        echo "PKR_VAR_destination_aws_secret_access_key=${secret_access_key}" >> "${GITHUB_ENV}"

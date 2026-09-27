@@ -113,7 +113,7 @@ For Windows, start from the [Windows 11 example](example/windows-11) and read th
 
 ## Development
 
-[mise](https://mise.jdx.dev) installs the tools at the versions CI uses: Go, Packer, KinD, kubectl, prek and GoReleaser.
+[mise](https://mise.jdx.dev) installs the tools CI uses, at the versions of [mise.toml](mise.toml).
 
 ```shell
 mise install
@@ -147,6 +147,7 @@ go test ./...
 ```
 
 The integration test builds the [Ubuntu example](example/ubuntu-26.04) on a KinD cluster with KubeVirt and CDI, in the `test plugin` workflow.
+KubeVirt has the version of `virtctl` in `mise.toml`, CDI the one of the [cluster action](.github/actions/cluster/action.yml).
 A push to a branch builds it once per export, side by side. A push to `main` builds it once with the three exports in a row.
 It also runs on demand, both ways:
 
