@@ -146,12 +146,12 @@ make generate
 | Ubuntu example, one job per export, side by side | every push to a branch | `test plugin` | about 8 min |
 | Ubuntu example, one job with the three exports in a row | every push to `main` | `test plugin` | about 10 min |
 | Windows 11 example | by hand | `test plugin with Windows` | about 35 min |
-| Unit tests | locally, and before each release | GoReleaser `before` hook | about 1 min |
+| Unit tests, with the race detector | every push, and before each release | `test plugin`, GoReleaser `before` hook | about 1 min |
 
-Unit tests:
+Unit tests, as CI runs them:
 
 ```shell
-go test ./...
+make test
 ```
 
 **Ubuntu example.** Each job builds the [Ubuntu example](example/ubuntu-26.04) on a KinD cluster with KubeVirt and CDI, at the versions of `mise.toml`, and provisions it with Ansible.

@@ -1,4 +1,4 @@
-# It uses Packer to init, validate and build an example configuration in a folder,
+# It runs the unit tests, and uses Packer to init, validate and build an example configuration in a folder,
 # on every push or when the workflow is manually triggered.
 # The image is uploaded to a Garage bucket, pushed to a registry and imported behind a DataSource,
 # all in the cluster: no AWS account and no registry account are needed.
@@ -18,6 +18,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  unit:
+    runs-on: ubuntu-26.04
+    name: Unit tests
+    steps:
+      - name: repository checkout
+        uses: actions/checkout@v7
+
+      - name: tools setup
+        uses: jdx/mise-action@v4
+
+      - name: go cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+
+      - name: unit tests
+        run: make test
+
   build:
     runs-on: ubuntu-26.04
     name: Run Packer (${{ matrix.export }})
