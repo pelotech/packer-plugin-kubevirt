@@ -1,11 +1,10 @@
-# It uses Packer to init and validate an example configuration in a folder on every push.
-# The example is also built when a pull request is approved or when the workflow is manually triggered.
+# It uses Packer to init, validate and build an example configuration in a folder,
+# on every push or when the workflow is manually triggered.
+# The image is uploaded to a Garage bucket of the cluster, no AWS account is needed.
 name: test plugin
 
 on:
   push:
-  pull_request_review:
-    types: [submitted]
   workflow_dispatch:
 
 env:
@@ -13,14 +12,14 @@ env:
 
 jobs:
   build:
-    if: github.event_name != 'pull_request_review' || github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     name: Run Packer
     env:
       working-directory: ./example
-      PKR_VAR_destination_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      PKR_VAR_destination_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      # keeps the images built in CI apart from the other exports of the bucket
+      # bucket of example/values.auto.pkrvars.hcl
+      S3_BUCKET: pelotech-vm-images
+      # the upload runs in a pod, it reaches Garage through its service
+      PKR_VAR_destination_s3_endpoint_url: "http://garage.garage.svc.cluster.local:3900"
       PKR_VAR_destination_aws_s3_key_prefix: "ci/"
       # sized for GitHub-hosted runners (4 CPUs, 16Gi)
       PKR_VAR_vm_cpu: "2"
@@ -81,6 +80,27 @@ jobs:
           # to skip '/dev/kvm' requirement - but requires testing with custom node and host volume mounting
           # kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'
 
+      - name: garage install
+        run: |
+          kubectl create namespace garage
+          kubectl create secret generic garage --namespace garage --from-literal=rpc-secret="$(openssl rand -hex 32)"
+          kubectl apply -f .github/garage.yaml
+          kubectl rollout status deployment/garage --namespace garage --timeout=5m
+
+          garage() { kubectl exec --namespace garage deployment/garage -- /garage "$@"; }
+          garage layout assign --zone kind --capacity 10G "$(garage node id -q)"
+          garage layout apply --version 1
+
+          access_key_id="GK$(openssl rand -hex 12)"
+          secret_access_key="$(openssl rand -hex 32)"
+          echo "::add-mask::${secret_access_key}"
+          garage key import --yes -n packer "${access_key_id}" "${secret_access_key}" > /dev/null
+          garage bucket create "${S3_BUCKET}"
+          garage bucket allow --read --write "${S3_BUCKET}" --key packer
+
+          echo "PKR_VAR_destination_aws_access_key_id=${access_key_id}" >> "${GITHUB_ENV}"
+          echo "PKR_VAR_destination_aws_secret_access_key=${secret_access_key}" >> "${GITHUB_ENV}"
+
       - name: display runner node / capabilities
         run: |
           # Print CPU information
@@ -135,13 +155,24 @@ jobs:
           packer validate .
 
       - name: packer build
-        if: github.event_name != 'push'
         working-directory: ${{ env.working-directory }}
         run: |
           PACKER_LOG=1 packer build .
+
+      - name: check the image in the bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ env.PKR_VAR_destination_aws_access_key_id }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.PKR_VAR_destination_aws_secret_access_key }}
+          AWS_REGION: us-west-2
+        run: |
+          kubectl port-forward --namespace garage service/garage 3900:3900 &
+          curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:3900
+          aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_aws_s3_key_prefix}base-ubuntu-2204.img.gz"
 
       - name: display cluster state
         if: failure()
         run: |
           kubectl get virtualmachines,virtualmachineinstances,datavolumes,virtualmachineexports,persistentvolumeclaims,jobs,pods --all-namespaces --output wide
           kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 50
+          kubectl describe pods --namespace garage
+          kubectl logs --namespace garage deployment/garage --tail 100

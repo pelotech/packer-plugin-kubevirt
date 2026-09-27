@@ -1,0 +1,72 @@
+# Single node Garage, the S3 storage of the integration test.
+# The namespace and the 'garage' secret are created by the workflow.
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: garage
+      namespace: garage
+    data:
+      garage.toml: |
+        metadata_dir = "/var/lib/garage/meta"
+        data_dir = "/var/lib/garage/data"
+        db_engine = "sqlite"
+        replication_factor = 1
+        rpc_bind_addr = "0.0.0.0:3901"
+
+        [s3_api]
+        api_bind_addr = "0.0.0.0:3900"
+        # region of example/values.auto.pkrvars.hcl
+        s3_region = "us-west-2"
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: garage
+      namespace: garage
+    spec:
+      selector:
+        matchLabels:
+          app: garage
+      template:
+        metadata:
+          labels:
+            app: garage
+        spec:
+          containers:
+            - name: garage
+              image: dxflrs/garage:v2.4.1
+              env:
+                - name: GARAGE_RPC_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: garage
+                      key: rpc-secret
+              ports:
+                - containerPort: 3900
+              readinessProbe:
+                tcpSocket:
+                  port: 3900
+              volumeMounts:
+                - name: config
+                  mountPath: /etc/garage.toml
+                  subPath: garage.toml
+                - name: data
+                  mountPath: /var/lib/garage
+          volumes:
+            - name: config
+              configMap:
+                name: garage
+            - name: data
+              emptyDir: {}
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: garage
+      namespace: garage
+    spec:
+      selector:
+        app: garage
+      ports:
+        - port: 3900

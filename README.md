@@ -36,13 +36,13 @@ go test ./...
 ```
 
 The integration test builds the [example](example) on a KinD cluster with KubeVirt and CDI, in the `test plugin` workflow.
-It runs when a pull request is approved, or on demand:
+It runs on every push, or on demand:
 
 ```shell
 gh workflow run tests.yml --ref <branch>
 ```
 
-A push only runs `packer init` and `packer validate`.
+The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket in the cluster, so the test needs no AWS account.
 
 ## Pipeline
 - integration tests (packer running against KinD cluster)
