@@ -34,7 +34,8 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          # its own key: the race detector builds every package again
+          key: go-race-${{ runner.os }}-${{ hashFiles('go.sum') }}
 
       - name: unit tests
         run: make test
