@@ -13,7 +13,7 @@ func newOCIUploaderOptions() OCIUploaderOptions {
 	return OCIUploaderOptions{
 		Name:        "base-ubuntu",
 		Namespace:   "packer",
-		Image:       "ghcr.io/pelotech/base-ubuntu:22.04",
+		Image:       "ghcr.io/pelotech/base-ubuntu:26.04",
 		ImageFormat: "qcow2",
 	}
 }
@@ -62,7 +62,7 @@ func TestGenerateOCIUploaderJobWithQcow2(t *testing.T) {
 	if !strings.Contains(convert, "--directory /tmp --owner 107 --group 107 disk") {
 		t.Errorf("expected a layer with the disk directory owned by 107, got: %s", convert)
 	}
-	expectedPush := "krane push /tmp/image.tar ghcr.io/pelotech/base-ubuntu:22.04"
+	expectedPush := "krane push /tmp/image.tar ghcr.io/pelotech/base-ubuntu:26.04"
 	if push := strings.Join(podSpec.Containers[0].Command, " "); push != expectedPush {
 		t.Errorf("expected push command '%s', got: '%s'", expectedPush, push)
 	}
@@ -199,11 +199,11 @@ func TestGenerateOCIUploaderJobWithoutDefaults(t *testing.T) {
 
 func TestFindRegistry(t *testing.T) {
 	registries := map[string]string{
-		"ghcr.io/pelotech/base-ubuntu:22.04":   "ghcr.io",
-		"registry:5000/base-ubuntu:22.04":      "registry:5000",
-		"localhost/pelotech/base-ubuntu:22.04": "localhost",
-		"pelotech/base-ubuntu:22.04":           "https://index.docker.io/v1/",
-		"base-ubuntu:22.04":                    "https://index.docker.io/v1/",
+		"ghcr.io/pelotech/base-ubuntu:26.04":   "ghcr.io",
+		"registry:5000/base-ubuntu:26.04":      "registry:5000",
+		"localhost/pelotech/base-ubuntu:26.04": "localhost",
+		"pelotech/base-ubuntu:26.04":           "https://index.docker.io/v1/",
+		"base-ubuntu:26.04":                    "https://index.docker.io/v1/",
 	}
 	for image, expectedRegistry := range registries {
 		if registry := findRegistry(image); registry != expectedRegistry {

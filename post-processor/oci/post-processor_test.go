@@ -8,7 +8,7 @@ import (
 
 func newConfig() Config {
 	return Config{
-		Image:       "ghcr.io/pelotech/base-ubuntu:22.04",
+		Image:       "ghcr.io/pelotech/base-ubuntu:26.04",
 		ImageFormat: "qcow2",
 	}
 }

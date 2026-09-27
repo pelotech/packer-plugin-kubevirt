@@ -22,7 +22,7 @@ A `DataSource` holds no data. It is a named pointer to a volume that new Virtual
 A Virtual Machine clones the volume with a `sourceRef` of kind `DataSource` in its `dataVolumeTemplates`.
 With `inferFromVolume`, it also takes its preference and its instance type from the labels of the DataSource.
 
-Each build imports into a new volume named `<datasource_name>-<UTC time of the build>`, for example `ubuntu-22.04-20260926153045`.
+Each build imports into a new volume named `<datasource_name>-<UTC time of the build>`, for example `ubuntu-26.04-20260926153045`.
 The volumes of previous builds are left in place, delete them once they are not needed.
 The import needs temporary scratch space of the size of the volume.
 
@@ -86,7 +86,7 @@ build {
   sources = ["source.kubevirt-iso.linux"]
 
   post-processor "kubevirt-datasource" {
-    datasource_name       = "ubuntu-22.04" # Optional
+    datasource_name       = "ubuntu-26.04" # Optional
     namespace             = "images"       # Optional
     volume_size           = "12Gi"         # Optional
     storage_class         = "standard"     # Optional
