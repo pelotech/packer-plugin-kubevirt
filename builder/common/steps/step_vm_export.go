@@ -44,6 +44,15 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 		return multistep.ActionHalt
 	}
 
+	err = k8s.WaitForVirtualMachineStopped(s.VirtClient.VirtualMachine(vm.Namespace), vm.Name, s.VmExportTimeOut)
+	if err != nil {
+		err := fmt.Errorf("failed to stop Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err)
+		appContext.Put(common.PackerError, err)
+		ui.Error(err.Error())
+
+		return multistep.ActionHalt
+	}
+
 	osFamily := *appContext.GetVirtualMachineOSFamily()
 	if vmctx.Linux == osFamily {
 		ui.Say(fmt.Sprintf("generify-ing with 'virt-sysprep' Virtual Machine for export %s/%s...", vm.Namespace, vm.Name))
@@ -60,7 +69,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 			return multistep.ActionHalt
 		}
 
-		err = k8s.WaitForJobCompletion(s.VirtClient.BatchV1(), ui, job, 2*time.Minute)
+		err = k8s.WaitForJobCompletion(s.VirtClient, ui, job, s.VmExportTimeOut)
 		if err != nil {
 			err := fmt.Errorf("error with 'libguestfs' job %s/%s: %s", vm.Namespace, vm.Name, err)
 			appContext.Put(common.PackerError, err)

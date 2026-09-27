@@ -1,9 +1,20 @@
 package k8s
 
 import (
+	"context"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestWaitForVirtualMachine(t *testing.T) {
@@ -77,4 +88,122 @@ func TestString(t *testing.T) {
 	println(labels.SelectorFromSet(map[string]string{
 		kubevirtv1.DeprecatedVirtualMachineNameLabel: "name",
 	}).String())
+}
+
+func newJobWithPod(containerState corev1.ContainerState) (*batchv1.Job, *corev1.Pod) {
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu-libguestfs", Namespace: "packer", UID: "job-uid"},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "base-ubuntu-libguestfs-abcde",
+			Namespace: job.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job")),
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
+			ContainerStatuses: []corev1.ContainerStatus{
+				{Name: "libguestfs", State: containerState},
+			},
+		},
+	}
+	return job, pod
+}
+
+func TestWaitForJobCompletionSucceeds(t *testing.T) {
+	job, pod := newJobWithPod(corev1.ContainerState{})
+	client := fake.NewSimpleClientset(job, pod)
+	watcher := watch.NewFake()
+	client.PrependWatchReactor("jobs", k8stesting.DefaultWatchReactor(watcher, nil))
+
+	completedJob := job.DeepCopy()
+	completedJob.Status.Conditions = []batchv1.JobCondition{
+		{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+	}
+	go watcher.Modify(completedJob)
+
+	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 5*time.Second)
+	if err != nil {
+		t.Fatalf("expected job to complete, got: %v", err)
+	}
+}
+
+func TestWaitForJobCompletionTimeoutReportsPodState(t *testing.T) {
+	job, pod := newJobWithPod(corev1.ContainerState{
+		Waiting: &corev1.ContainerStateWaiting{Reason: "ImagePullBackOff", Message: "back-off pulling image"},
+	})
+	client := fake.NewSimpleClientset(job, pod)
+
+	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected a timeout error")
+	}
+	for _, expected := range []string{"timeout", pod.Name, "ImagePullBackOff"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Errorf("expected error to contain %q, got: %v", expected, err)
+		}
+	}
+}
+
+func TestWaitForJobCompletionFailureReportsPodState(t *testing.T) {
+	job, pod := newJobWithPod(corev1.ContainerState{
+		Terminated: &corev1.ContainerStateTerminated{Reason: "Error", ExitCode: 1},
+	})
+	client := fake.NewSimpleClientset(job, pod)
+	watcher := watch.NewFake()
+	client.PrependWatchReactor("jobs", k8stesting.DefaultWatchReactor(watcher, nil))
+
+	failedJob := job.DeepCopy()
+	failedJob.Status.Conditions = []batchv1.JobCondition{
+		{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
+	}
+	go watcher.Modify(failedJob)
+
+	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected a failure error")
+	}
+	for _, expected := range []string{"failed", pod.Name, "exit code 1"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Errorf("expected error to contain %q, got: %v", expected, err)
+		}
+	}
+}
+
+func TestWaitForJobCompletionClosedWatch(t *testing.T) {
+	job, _ := newJobWithPod(corev1.ContainerState{})
+	client := fake.NewSimpleClientset(job)
+	watcher := watch.NewFake()
+	client.PrependWatchReactor("jobs", k8stesting.DefaultWatchReactor(watcher, nil))
+	watcher.Stop()
+
+	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected an error when the watch is closed before the job completes")
+	}
+}
+
+func TestWaitForVirtualMachineStopped(t *testing.T) {
+	vm := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+		Status:     kubevirtv1.VirtualMachineStatus{PrintableStatus: kubevirtv1.VirtualMachineStatusStopping},
+	}
+	client := kubevirtfake.NewSimpleClientset(vm).KubevirtV1().VirtualMachines(vm.Namespace)
+
+	err := WaitForVirtualMachineStopped(client, vm.Name, 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected a timeout while the Virtual Machine is still stopping")
+	}
+
+	vm.Status.PrintableStatus = kubevirtv1.VirtualMachineStatusStopped
+	if _, err = client.UpdateStatus(context.Background(), vm, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("failed to update Virtual Machine status: %v", err)
+	}
+
+	err = WaitForVirtualMachineStopped(client, vm.Name, 5*time.Second)
+	if err != nil {
+		t.Fatalf("expected Virtual Machine to be seen as stopped, got: %v", err)
+	}
 }
