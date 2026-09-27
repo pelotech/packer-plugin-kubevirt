@@ -5,7 +5,13 @@
       "release-type": "go",
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,
-      "extra-files": ["version/version.go"]
+      "extra-files": [
+        "version/version.go",
+        "README.md",
+        "docs/README.md",
+        ".web-docs/README.md",
+        "example/build.pkr.hcl"
+      ]
     }
   }
 }

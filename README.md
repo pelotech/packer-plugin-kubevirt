@@ -34,6 +34,7 @@ Linux builds are covered by the integration test. Windows builds are not.
 
 ## Install
 
+<!-- x-release-please-start-version -->
 ```hcl
 packer {
   required_plugins {
@@ -44,6 +45,7 @@ packer {
   }
 }
 ```
+<!-- x-release-please-end -->
 
 Then run `packer init`. It installs the latest release. To use what is on `main` before it is released, build the plugin from the sources, see [Development](#development).
 
