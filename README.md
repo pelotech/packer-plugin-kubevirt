@@ -112,7 +112,7 @@ The [Ubuntu example](example/ubuntu-26.04) is a complete template, the one built
 
 ## Development
 
-[mise](https://mise.jdx.dev) installs the tools at the versions CI uses: Go, Packer, KinD, kubectl and prek.
+[mise](https://mise.jdx.dev) installs the tools at the versions CI uses: Go, Packer, KinD, kubectl, prek and GoReleaser.
 
 ```shell
 mise install
