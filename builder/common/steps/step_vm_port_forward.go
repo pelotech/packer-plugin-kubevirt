@@ -24,10 +24,7 @@ func (s *StepPortForwardVM) Run(ctx context.Context, state multistep.StateBag) m
 
 	portMappings, err := s.computePortMappings()
 	if err != nil {
-		appContext.Put(common.PackerError, err)
-		ui.Error(err.Error())
-
-		return multistep.ActionHalt
+		return appContext.Halt(err)
 	}
 
 	vm := appContext.GetVirtualMachine()
@@ -37,20 +34,12 @@ func (s *StepPortForwardVM) Run(ctx context.Context, state multistep.StateBag) m
 		}).String(),
 	})
 	if err != nil || len(pods.Items) < 1 {
-		err := fmt.Errorf("failed to get pod name for port-forwarding Virtual Machine %s/%s: %w", vm.Namespace, vm.Name, err)
-		appContext.Put(common.PackerError, err)
-		ui.Error(err.Error())
-
-		return multistep.ActionHalt
+		return appContext.Halt(fmt.Errorf("failed to get pod name for port-forwarding Virtual Machine %s/%s: %w", vm.Namespace, vm.Name, err))
 	}
 
 	stopChan, err := k8s.RunAsyncPortForward(s.Clients, pods.Items[0].Name, vm.Namespace, portMappings)
 	if err != nil {
-		err := fmt.Errorf("failed to port-forward Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err)
-		appContext.Put(common.PackerError, err)
-		ui.Error(err.Error())
-
-		return multistep.ActionHalt
+		return appContext.Halt(fmt.Errorf("failed to port-forward Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
 	}
 	s.stopChan = stopChan
 
