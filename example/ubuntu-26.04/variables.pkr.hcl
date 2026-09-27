@@ -1,6 +1,7 @@
 variable "kubernetes_namespace" {
   description = "Kubernetes namespace used to provision and export virtual machines"
   type        = string
+  default     = "packer"
 }
 
 variable "vm_cpu" {
@@ -14,25 +15,6 @@ variable "vm_memory" {
   type        = string
   default     = "8Gi"
 }
-
-variable "source_aws_access_key_id" {
-  description = "AWS Access Key ID for S3 bucket containing VM images (Empty will skip adding credentials)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "source_aws_secret_access_key" {
-  description = "AWS Secret Access Key for S3 bucket containing VM images (Empty will skip adding credentials)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-# variable "ansible_host" {
-#   description = "Target host defined in Ansible Playbook used."
-#   type        = string
-# }
 
 variable "destination_aws_s3_bucket" {
   description = "AWS S3 Bucket where exported VM images are stored"

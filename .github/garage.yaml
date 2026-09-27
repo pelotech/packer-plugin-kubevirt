@@ -18,7 +18,7 @@ items:
 
         [s3_api]
         api_bind_addr = "0.0.0.0:3900"
-        # region of example/ubuntu-26.04/values.auto.pkrvars.hcl
+        # region the examples upload to, see the workflows
         s3_region = "us-west-2"
   - apiVersion: apps/v1
     kind: Deployment
