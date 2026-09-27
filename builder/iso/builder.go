@@ -13,7 +13,6 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
 	"github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
-	gossh "golang.org/x/crypto/ssh"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -94,22 +93,9 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 		return nil, nil, fmt.Errorf("invalid 'vm_memory' value '%s': %s", b.config.VirtualMachineMemory, err)
 	}
 
-	if b.config.Comm.Type == "" {
-		b.config.Comm.Type = "ssh"
-		warnings = append(warnings, "no communication method was specified, so SSH will be used by default to connect to the machine.")
-	}
-	commType := strings.ToLower(b.config.Comm.Type)
-	if commType == "ssh" && b.config.Comm.SSHPort == 0 {
-		b.config.Comm.SSHPort = 2222
-	}
-	if commType == "winrm" && b.config.Comm.WinRMPort == 0 {
-		b.config.Comm.WinRMPort = 5389
-	}
-	if buildercommon.IsReservedPort(b.config.Comm.SSHPort) || buildercommon.IsReservedPort(b.config.Comm.WinRMPort) {
-		return nil, nil, fmt.Errorf("the local port for communicating with the remote machine is reserved - please use a port above 1024")
-	}
-	if b.config.Comm.WinRMTimeout == 0 {
-		b.config.Comm.WinRMTimeout = 30 * time.Second
+	warnings, err = prepareCommunicator(&b.config.Comm)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	b.clients, err = k8s.GetKubevirtClient()
@@ -118,6 +104,60 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	}
 
 	return generatedVars, warnings, nil
+}
+
+func prepareCommunicator(comm *communicator.Config) (warnings []string, err error) {
+	if comm.Type == "" {
+		comm.Type = "ssh"
+		warnings = append(warnings, "no communication method was specified, so SSH will be used by default to connect to the machine.")
+	}
+	switch comm.Type {
+	case "ssh":
+		if comm.SSHPort == 0 {
+			comm.SSHPort = 2222
+		}
+		if comm.SSHUsername == "" && comm.SSHPassword == "" {
+			comm.SSHUsername = buildercommon.VirtualMachineUsername
+			comm.SSHPassword = buildercommon.VirtualMachinePassword
+		}
+	case "winrm":
+		if comm.WinRMPort == 0 {
+			comm.WinRMPort = 5389
+		}
+		if comm.WinRMUser == "" && comm.WinRMPassword == "" {
+			comm.WinRMUser = buildercommon.VirtualMachineUsername
+			comm.WinRMPassword = buildercommon.VirtualMachinePassword
+		}
+	default:
+		return nil, fmt.Errorf("unsupported communicator type, allowed values: 'ssh', 'winrm'")
+	}
+	if buildercommon.IsReservedPort(comm.SSHPort) || buildercommon.IsReservedPort(comm.WinRMPort) {
+		return nil, fmt.Errorf("the local port for communicating with the remote machine is reserved - please use a port above 1024")
+	}
+	if comm.WinRMTimeout == 0 {
+		comm.WinRMTimeout = 30 * time.Second
+	}
+	if errs := comm.Prepare(nil); len(errs) > 0 {
+		return nil, &packer.MultiError{Errors: errs}
+	}
+
+	return warnings, nil
+}
+
+func connectStep(comm *communicator.Config) *communicator.StepConnect {
+	return &communicator.StepConnect{
+		Config: comm,
+		Host: func(bag multistep.StateBag) (string, error) {
+			return buildercommon.VirtualMachineHost, nil
+		},
+		SSHConfig: comm.SSHConfigFunc(),
+		SSHPort: func(bag multistep.StateBag) (int, error) {
+			return buildercommon.GetOrDefault(comm.SSHPort, buildercommon.DefaultSSHPort), nil
+		},
+		WinRMPort: func(bag multistep.StateBag) (int, error) {
+			return buildercommon.GetOrDefault(comm.WinRMPort, buildercommon.DefaultWinRMPort), nil
+		},
+	}
 }
 
 func decodeTolerations(rawTolerations []map[string]string) []v1.Toleration {
@@ -173,33 +213,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			Clients: b.clients,
 			Comm:    b.config.Comm,
 		},
-		&communicator.StepConnect{
-			Config: &b.config.Comm,
-			Host: func(bag multistep.StateBag) (string, error) {
-				return buildercommon.VirtualMachineHost, nil
-			},
-			SSHConfig: func(bag multistep.StateBag) (*gossh.ClientConfig, error) {
-				return &gossh.ClientConfig{
-					User: buildercommon.VirtualMachineUsername,
-					Auth: []gossh.AuthMethod{
-						gossh.Password(buildercommon.VirtualMachinePassword),
-					},
-					HostKeyCallback: gossh.InsecureIgnoreHostKey(),
-				}, nil
-			},
-			SSHPort: func(bag multistep.StateBag) (int, error) {
-				return buildercommon.GetOrDefault(b.config.Comm.SSHPort, buildercommon.DefaultSSHPort), nil
-			},
-			WinRMConfig: func(bag multistep.StateBag) (*communicator.WinRMConfig, error) {
-				return &communicator.WinRMConfig{
-					Username: buildercommon.VirtualMachineUsername,
-					Password: buildercommon.VirtualMachinePassword,
-				}, nil
-			},
-			WinRMPort: func(bag multistep.StateBag) (int, error) {
-				return buildercommon.GetOrDefault(b.config.Comm.WinRMPort, buildercommon.DefaultWinRMPort), nil
-			},
-		},
+		connectStep(&b.config.Comm),
 		&commonsteps.StepProvision{},
 		&stepDef.StepExportVM{
 			Clients:         b.clients,

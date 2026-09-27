@@ -79,11 +79,33 @@ Sensitive field - Defaults to empty string (will skip adding credentials)
 
 **Communicator configuration fields**
 
+The builder connects to the VM through a local port forwarded to it, so `ssh_host` and `winrm_host` are ignored.
+The other settings of the Packer [SSH](https://developer.hashicorp.com/packer/docs/communicators/ssh) and
+[WinRM](https://developer.hashicorp.com/packer/docs/communicators/winrm) communicators apply, with their usual defaults unless listed here.
+
 - `communicator` (string) - Packer communicator type
 Accepted values: `ssh`, `winrm` - Defaults to `ssh`
 
+- `ssh_username` (string) - User name to connect to the VM with SSH
+Defaults to `packer`, the user of the default cloud-init file, when `ssh_username` and `ssh_password` are both unset
+
+- `ssh_password` (string) - Password to connect to the VM with SSH
+Sensitive field - Defaults to `packer` when `ssh_username` and `ssh_password` are both unset
+
+- `ssh_private_key_file` (string) - Path to the private key to connect to the VM with SSH, your cloud-init file has to authorize its public key
+Defaults to no key
+
+- `ssh_timeout` (duration string) - Time to wait for SSH to become available
+Defaults to `5m`
+
 - `ssh_port` (int) - Local port forwarded to the VM SSH port
 Accepted value: `>=1024` - Defaults to `2222`
+
+- `winrm_username` (string) - User name to connect to the VM with WinRM
+Defaults to `packer`, the user of the default answer file, when `winrm_username` and `winrm_password` are both unset
+
+- `winrm_password` (string) - Password to connect to the VM with WinRM
+Sensitive field - Defaults to `packer` when `winrm_username` and `winrm_password` are both unset
 
 - `winrm_port` (int) - Local port forwarded to the VM WinRM port
 Accepted value: `>=1024` - Defaults to `5389`
