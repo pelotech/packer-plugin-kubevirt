@@ -129,7 +129,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		return nil, true, true, fmt.Errorf("failed to create S3 uploader secret: %w", err)
 	}
 
-	err = k8s.WaitForJobCompletion(p.virtClient.BatchV1(), ui, job, p.config.UploadTimeOut)
+	err = k8s.WaitForJobCompletion(p.virtClient, ui, job, p.config.UploadTimeOut)
 	if err != nil {
 		return nil, true, true, fmt.Errorf("error with 'S3 uploader' job: %w", err)
 	}
