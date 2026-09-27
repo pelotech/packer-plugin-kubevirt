@@ -3,7 +3,6 @@
 This repository contains the following sections:
 - Builders:
   - [ISO builder](builder/iso)
-  - IMG builder _(to be implemented)_
 - Post-processors
   - [S3 Export](post-processor/s3)
   - OCI Export _(to be implemented)_

@@ -1,23 +1,30 @@
-# This is a manually triggered action workflow.
-# It uses Packer at the latest version to init, validate and build
-# an example configuration in a folder.
+# It uses Packer to init and validate an example configuration in a folder on every push.
+# The example is also built when a pull request is approved or when the workflow is manually triggered.
 name: test plugin
 
 on:
   push:
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
 
 env:
   PRODUCT_VERSION: "1.11.2"
 
 jobs:
   build:
-    # runs-on: [ "self-hosted", "linux", "x64", "ubuntu-2204" ] # until self-hosted runner is available
+    if: github.event_name != 'pull_request_review' || github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     name: Run Packer
     env:
       working-directory: ./example
       PKR_VAR_destination_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       PKR_VAR_destination_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      # keeps the images built in CI apart from the other exports of the bucket
+      PKR_VAR_destination_aws_s3_key_prefix: "ci/"
+      # sized for GitHub-hosted runners (4 CPUs, 16Gi)
+      PKR_VAR_vm_cpu: "2"
+      PKR_VAR_vm_memory: "4Gi"
     steps:
       - name: repository checkout
         uses: actions/checkout@v7
@@ -128,7 +135,13 @@ jobs:
           packer validate .
 
       - name: packer build
-        if: false # until self-hosted runner is available
+        if: github.event_name != 'push'
         working-directory: ${{ env.working-directory }}
         run: |
           PACKER_LOG=1 packer build .
+
+      - name: display cluster state
+        if: failure()
+        run: |
+          kubectl get virtualmachines,virtualmachineinstances,datavolumes,virtualmachineexports,persistentvolumeclaims,jobs,pods --all-namespaces --output wide
+          kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 50

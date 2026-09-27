@@ -11,13 +11,10 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	exportv1 "kubevirt.io/api/export/v1beta1"
 	"kubevirt.io/client-go/kubecli"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	"packer-plugin-kubevirt/post-processor/common"
-	"strings"
 	"time"
 )
 
@@ -32,6 +29,7 @@ type Config struct {
 	AWSSecretAccessKey string        `mapstructure:"aws_secret_access_key"`
 	AWSRegion          string        `mapstructure:"aws_region"`
 	UploadTimeOut      time.Duration `mapstructure:"upload_timeout" required:"false"`
+	ImageFormat        string        `mapstructure:"image_format" required:"false"`
 }
 
 type PostProcessor struct {
@@ -50,6 +48,11 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 			Exclude: []string{},
 		},
 	}, raws...)
+	if err != nil {
+		return err
+	}
+
+	err = common.ValidateImageFormat(p.config.ImageFormat)
 	if err != nil {
 		return err
 	}
@@ -81,19 +84,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	}
 	defer p.cleanupResources(ui, ns, name)
 
-	var exportServerUrl string
-	if links := export.Status.Links; links.Internal == nil || links.Internal.Volumes == nil {
-		return nil, true, true, fmt.Errorf("failed to get any data from Virtual Machine Export %s/%s: %v", ns, name, export.Status)
-	}
-	for _, vol := range export.Status.Links.Internal.Volumes {
-		if strings.HasSuffix(vol.Name, string(generator.SourceDataVolumeSuffix)) { // may need better logic if many volumes
-			for _, volumeFormat := range vol.Formats {
-				if volumeFormat.Format == exportv1.KubeVirtGz {
-					exportServerUrl = volumeFormat.Url
-				}
-			}
-		}
-	}
+	exportServerUrl := common.FindVolumeUrl(export, p.config.ImageFormat)
 	if exportServerUrl == "" {
 		return nil, true, true, fmt.Errorf("failed to get the desired volume URL from Virtual Machine Export %s/%s: %v", ns, name, export.Status)
 	}
@@ -107,6 +98,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		S3BucketName:            p.config.S3Bucket,
 		S3KeyPrefix:             p.config.S3KeyPrefix,
 		AWSRegion:               p.config.AWSRegion,
+		ImageFormat:             p.config.ImageFormat,
 	}
 	if p.config.ServiceAccountName != "" {
 		// Priority to IRSA-based auth

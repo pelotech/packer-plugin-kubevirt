@@ -3,6 +3,18 @@ variable "kubernetes_namespace" {
   type        = string
 }
 
+variable "vm_cpu" {
+  description = "CPUs requested by the virtual machine"
+  type        = string
+  default     = "4"
+}
+
+variable "vm_memory" {
+  description = "Memory requested by the virtual machine"
+  type        = string
+  default     = "8Gi"
+}
+
 variable "source_aws_access_key_id" {
   description = "AWS Access Key ID for S3 bucket containing VM images (Empty will skip adding credentials)"
   type        = string
