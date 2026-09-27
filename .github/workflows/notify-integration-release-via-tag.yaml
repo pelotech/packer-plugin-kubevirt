@@ -28,7 +28,7 @@ jobs:
           ref: ${{ github.ref }}
 
       # Ensure that Docs are Compiled
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
       - shell: bash
         run: make generate
       - shell: bash
