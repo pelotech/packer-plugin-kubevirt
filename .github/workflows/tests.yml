@@ -1,6 +1,7 @@
 # It uses Packer to init, validate and build an example configuration in a folder,
 # on every push or when the workflow is manually triggered.
-# The image is uploaded to a Garage bucket of the cluster, no AWS account is needed.
+# The image is uploaded to a Garage bucket and pushed to a registry of the cluster,
+# no AWS account and no registry account are needed.
 name: test plugin
 
 on:
@@ -21,6 +22,11 @@ jobs:
       # the upload runs in a pod, it reaches Garage through its service
       PKR_VAR_destination_s3_endpoint_url: "http://garage.garage.svc.cluster.local:3900"
       PKR_VAR_destination_aws_s3_key_prefix: "ci/"
+      OCI_REPOSITORY: pelotech/base-ubuntu
+      OCI_TAG: "22.04"
+      # the push runs in a pod, it reaches the registry through its service
+      PKR_VAR_destination_oci_image: "registry.registry.svc.cluster.local:5000/pelotech/base-ubuntu:22.04"
+      PKR_VAR_destination_oci_registry_insecure: "true"
       # sized for GitHub-hosted runners (4 CPUs, 16Gi)
       PKR_VAR_vm_cpu: "2"
       PKR_VAR_vm_memory: "4Gi"
@@ -101,6 +107,12 @@ jobs:
           echo "PKR_VAR_destination_aws_access_key_id=${access_key_id}" >> "${GITHUB_ENV}"
           echo "PKR_VAR_destination_aws_secret_access_key=${secret_access_key}" >> "${GITHUB_ENV}"
 
+      - name: registry install
+        run: |
+          kubectl create namespace registry
+          kubectl apply -f .github/registry.yaml
+          kubectl rollout status deployment/registry --namespace registry --timeout=5m
+
       - name: display runner node / capabilities
         run: |
           # Print CPU information
@@ -169,6 +181,15 @@ jobs:
           curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:3900
           aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_aws_s3_key_prefix}base-ubuntu-2204.img.gz"
 
+      - name: check the image in the registry
+        run: |
+          kubectl port-forward --namespace registry service/registry 5000:5000 &
+          curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:5000/v2/
+          manifest="$(curl --silent --fail --header 'Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json' "http://localhost:5000/v2/${OCI_REPOSITORY}/manifests/${OCI_TAG}")"
+          config="$(curl --silent --fail --location "http://localhost:5000/v2/${OCI_REPOSITORY}/blobs/$(echo "${manifest}" | jq --raw-output .config.digest)")"
+          echo "${config}" | jq --exit-status '.config.Env | index("INSTANCETYPE_KUBEVIRT_IO_DEFAULT_PREFERENCE=ubuntu")'
+          echo "${manifest}" | jq --exit-status '.layers | length == 1'
+
       - name: display cluster state
         if: failure()
         run: |
@@ -176,3 +197,5 @@ jobs:
           kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 50
           kubectl describe pods --namespace garage
           kubectl logs --namespace garage deployment/garage --tail 100
+          kubectl describe pods --namespace registry
+          kubectl logs --namespace registry deployment/registry --tail 100
