@@ -110,6 +110,7 @@ build {
   post-processor "kubevirt-s3" {
     s3_bucket             = var.destination_aws_s3_bucket
     s3_key_prefix         = var.destination_aws_s3_key_prefix
+    s3_endpoint_url       = var.destination_s3_endpoint_url # Optional
     aws_region            = var.destination_aws_region
     aws_access_key_id     = var.destination_aws_access_key_id
     aws_secret_access_key = var.destination_aws_secret_access_key

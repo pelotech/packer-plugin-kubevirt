@@ -36,6 +36,10 @@ A Kubernetes job downloads the disk image from the Virtual Machine Export and up
 - `s3_key_prefix` (string) -  AWS S3 Key prefix for all the exported VM images
 Defaults to empty string (image stored at the root of the bucket)
 
+- `s3_endpoint_url` (string) -  URL of an S3-compatible storage to upload to instead of AWS S3, such as Garage, MinIO or Ceph
+Must be an `http` or `https` URL, `aws_region` is then the region configured on that storage
+Defaults to empty string (AWS S3)
+
 - `image_format` (string) -  Format the disk image is converted to with `qemu-img` before the upload, stored as `<kubernetes_name>.<image_format>`.
 The job needs scratch space for both the raw and the converted image
 Accepted values: `qcow2`, `vmdk`, `vhdx`, `vdi` - Defaults to empty string (compressed raw image, no conversion)

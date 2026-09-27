@@ -42,6 +42,7 @@ type S3UploaderOptions struct {
 	AWSAccessKeyId     *string
 	AWSSecretAccessKey *string
 	AWSRegion          string
+	S3EndpointUrl      string
 
 	ImageFormat string
 }
@@ -84,6 +85,9 @@ func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.
 	if opts.AWSAccessKeyId != nil && opts.AWSSecretAccessKey != nil {
 		stringData["AWS_ACCESS_KEY_ID"] = *opts.AWSAccessKeyId
 		stringData["AWS_SECRET_ACCESS_KEY"] = *opts.AWSSecretAccessKey
+	}
+	if opts.S3EndpointUrl != "" {
+		stringData["AWS_ENDPOINT_URL"] = opts.S3EndpointUrl
 	}
 
 	return &corev1.Secret{

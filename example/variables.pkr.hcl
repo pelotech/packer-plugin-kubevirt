@@ -50,6 +50,12 @@ variable "destination_aws_s3_key_prefix" {
   }
 }
 
+variable "destination_s3_endpoint_url" {
+  description = "URL of an S3-compatible storage where exported VM images are stored (Empty will use AWS S3)"
+  type        = string
+  default     = ""
+}
+
 variable "destination_service_account_name" {
   description = "Service Account Name with S3 bucket permissions to write disk images to it (recommended)"
   type        = string

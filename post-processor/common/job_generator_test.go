@@ -52,6 +52,26 @@ func TestGenerateS3UploaderJobWithServiceAccount(t *testing.T) {
 	}
 }
 
+func TestGenerateS3UploaderSecretWithEndpointUrl(t *testing.T) {
+	opts := S3UploaderOptions{
+		Name:          "base-ubuntu",
+		Namespace:     "packer",
+		S3EndpointUrl: "http://garage.garage.svc:3900",
+	}
+	job := GenerateS3UploaderJob(newExport(), opts)
+
+	secret := GenerateS3UploaderSecret(job, opts)
+	if url := secret.StringData["AWS_ENDPOINT_URL"]; url != opts.S3EndpointUrl {
+		t.Errorf("expected endpoint URL '%s' in the secret, got: '%s'", opts.S3EndpointUrl, url)
+	}
+
+	opts.S3EndpointUrl = ""
+	secret = GenerateS3UploaderSecret(job, opts)
+	if _, found := secret.StringData["AWS_ENDPOINT_URL"]; found {
+		t.Errorf("expected no endpoint URL in the secret, got keys: %v", secret.StringData)
+	}
+}
+
 func TestGenerateS3UploaderJobWithoutImageFormat(t *testing.T) {
 	serviceAccountName := "s3-uploader"
 	opts := S3UploaderOptions{
