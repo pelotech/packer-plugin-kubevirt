@@ -5,34 +5,31 @@ Build virtual machine images on Kubernetes with [KubeVirt](https://kubevirt.io),
 ## How it works
 
 ```mermaid
-flowchart TD
-    source[("Source<br/>ISO or cloud image, over HTTP or from S3")]
+flowchart LR
+    source[("Source<br/>ISO or cloud image<br/>over HTTP or from S3")]
 
     subgraph builder["Builder kubevirt-iso"]
-        import["CDI imports the source into a volume"]
-        vm["The Virtual Machine starts<br/>its preference sets firmware, buses and TPM"]
-        boot["Boot command typed over VNC"]
-        ready["Ready: the guest agent answers<br/>after cloud-init or the Windows answer file"]
-        provision["Provisioners over SSH or WinRM<br/>shell, Ansible, PowerShell"]
-        generalize["Generalize and stop<br/>Linux: virt-sysprep job<br/>Windows: Sysprep as the shutdown command"]
-        export["Virtual Machine Export<br/>serves the disk in the cluster"]
-        import --> vm
-        vm -.->|"Windows ISO with UEFI"| boot -.-> ready
-        vm --> ready --> provision --> generalize --> export
+        direction TB
+        import["CDI imports the source"]
+        boot["The Virtual Machine boots<br/>boot command over VNC for a Windows ISO"]
+        provision["Provisioners over SSH or WinRM<br/>once the guest agent answers"]
+        generalize["Generalize and stop<br/>Linux: virt-sysprep<br/>Windows: Sysprep"]
+        export["Virtual Machine Export"]
+        import --> boot --> provision --> generalize --> export
     end
 
-    subgraph postprocessors["Post-processors, one or several"]
-        s3["kubevirt-s3<br/>as it is, or qcow2, vmdk, vhdx, vdi"]
+    subgraph postprocessors["Post-processors"]
+        direction TB
+        s3["kubevirt-s3<br/>gzip, qcow2, vmdk, vhdx, vdi"]
         oci["kubevirt-oci<br/>containerDisk, qcow2 or raw"]
-        datasource["kubevirt-datasource<br/>CDI imports the disk"]
+        datasource["kubevirt-datasource<br/>imported by CDI"]
     end
 
     source --> import
-    export --> s3 --> bucket[("S3 bucket")]
-    export --> oci --> registry[("Container registry")]
-    export --> datasource --> ds[("DataSource")]
-    registry --> newvm["New Virtual Machines<br/>with the preference of the build"]
-    ds --> newvm
+    export --> s3 & oci & datasource
+    s3 --> bucket[("S3 bucket")]
+    oci --> registry[("Container registry<br/>preference in the image")]
+    datasource --> ds[("DataSource<br/>preference as a label")]
 ```
 
 1. The builder creates a Virtual Machine from an ISO or a cloud image and waits for the guest to be ready.
