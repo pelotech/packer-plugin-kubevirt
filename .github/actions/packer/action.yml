@@ -1,0 +1,29 @@
+name: Packer plugin
+description: >
+  Builds the plugin, installs it for Packer, and initializes a folder of templates.
+  The tools of mise.toml must be installed first.
+inputs:
+  working-directory:
+    description: Folder of the Packer templates
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: go cache
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+
+    - name: plugin build
+      shell: bash
+      run: go build .
+
+    - name: packer init
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        packer plugins install --path "${GITHUB_WORKSPACE}/packer-plugin-kubevirt" "github.com/pelotech/kubevirt"
+        packer init .

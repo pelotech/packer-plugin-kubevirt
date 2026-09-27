@@ -22,6 +22,14 @@ repos:
       - id: packer_fmt
         # the hook fails without arguments on the bash 3.2 of macOS
         args: [-diff]
+  - repo: local
+    hooks:
+      # the version of mise.toml
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        files: ^\.github/workflows/
   - repo: https://github.com/dnephin/pre-commit-golang
     rev: v0.5.1
     hooks:

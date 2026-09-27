@@ -1,5 +1,5 @@
 # Single node Garage, the S3 storage of the integration test.
-# The namespace and the 'garage' secret are created by the workflow.
+# The namespace and the 'garage' secret are created by the action next to this file.
 apiVersion: v1
 kind: List
 items:

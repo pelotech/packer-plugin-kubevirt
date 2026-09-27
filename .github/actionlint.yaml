@@ -1,0 +1,9 @@
+self-hosted-runner:
+  # GitHub-hosted, but unknown to actionlint 1.7.12
+  labels:
+    - ubuntu-26.04
+paths:
+  .github/workflows/notify-integration-release-via-tag.yaml:
+    ignore:
+      # the step that notifies HashiCorp stays off until the plugin gets its identifier
+      - 'constant expression "false" in condition'
