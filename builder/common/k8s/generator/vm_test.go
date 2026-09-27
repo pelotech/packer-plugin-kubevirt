@@ -2,6 +2,7 @@ package generator
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	"packer-plugin-kubevirt/builder/common/vm"
 	"testing"
 )
@@ -61,5 +62,23 @@ func TestGenerateStartupScriptSecretForWindows(t *testing.T) {
 				t.Errorf("expected answer file '%.40s', got: '%.40s'", test.expected, sysprep)
 			}
 		})
+	}
+}
+
+func TestGenerateVirtualMachineRunStrategy(t *testing.T) {
+	virtualMachine := GenerateVirtualMachine(VirtualMachineOptions{
+		Name:      "base-ubuntu",
+		Namespace: "packer",
+		OsFamily:  vm.Linux,
+		DiskSpace: "10Gi",
+		CPU:       "2",
+		Memory:    "4Gi",
+	})
+
+	if virtualMachine.Spec.Running != nil {
+		t.Errorf("expected the deprecated 'running' field to be left out, got: %v", *virtualMachine.Spec.Running)
+	}
+	if strategy := virtualMachine.Spec.RunStrategy; strategy == nil || *strategy != kubevirtv1.RunStrategyAlways {
+		t.Errorf("expected run strategy '%s', got: %v", kubevirtv1.RunStrategyAlways, strategy)
 	}
 }
