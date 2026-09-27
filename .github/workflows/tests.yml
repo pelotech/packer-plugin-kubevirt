@@ -20,6 +20,8 @@ jobs:
       working-directory: ./example
       PKR_VAR_destination_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       PKR_VAR_destination_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      # keeps the images built in CI apart from the other exports of the bucket
+      PKR_VAR_destination_aws_s3_key_prefix: "ci/"
       # sized for GitHub-hosted runners (4 CPUs, 16Gi)
       PKR_VAR_vm_cpu: "2"
       PKR_VAR_vm_memory: "4Gi"
