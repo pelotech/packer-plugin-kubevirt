@@ -102,6 +102,45 @@ func buildJobSecretName(name string) string {
 	return fmt.Sprintf("%s-%s", name, jobSecretSuffix)
 }
 
+func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl string) corev1.Container {
+	return corev1.Container{
+		Name:  "download",
+		Image: "curlimages/curl:8.22.0",
+		Command: []string{
+			"/bin/sh",
+			"-c",
+			fmt.Sprintf("curl --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
+				certVolumeMountPath, exportServerPEMCert,
+				tempVolumeMountPath, downloadedFilename,
+				steps.ExportTokenHeader, exportTokenEnvVar,
+				exportServerUrl),
+		},
+		Env: []corev1.EnvVar{
+			{
+				Name: exportTokenEnvVar,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: exportTokenEnvVar,
+					},
+				},
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      tempVolumeMountVolumeMapping,
+				MountPath: tempVolumeMountPath,
+			},
+			{
+				Name:      certVolumeMountVolumeMapping,
+				MountPath: certVolumeMountPath,
+			},
+		},
+	}
+}
+
 func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
 	downloadedFilename := fmt.Sprintf("%s.img.gz", opts.Name)
 	filename := downloadedFilename
@@ -144,42 +183,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccountName,
 					InitContainers: append([]corev1.Container{
-						{
-							Name:  "download",
-							Image: "curlimages/curl:8.22.0",
-							Command: []string{
-								"/bin/sh",
-								"-c",
-								fmt.Sprintf("curl --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
-									certVolumeMountPath, exportServerPEMCert,
-									tempVolumeMountPath, downloadedFilename,
-									steps.ExportTokenHeader, exportTokenEnvVar,
-									opts.ExportServerUrl),
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: exportTokenEnvVar,
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: buildJobSecretName(opts.Name),
-											},
-											Key: exportTokenEnvVar,
-										},
-									},
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      tempVolumeMountVolumeMapping,
-									MountPath: tempVolumeMountPath,
-								},
-								{
-									Name:      certVolumeMountVolumeMapping,
-									MountPath: certVolumeMountPath,
-								},
-							},
-						},
+						generateDownloadContainer(buildJobSecretName(opts.Name), downloadedFilename, opts.ExportServerUrl),
 					}, convertContainers...),
 					Containers: []corev1.Container{
 						{

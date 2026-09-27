@@ -33,4 +33,9 @@ integration {
     name = "KubeVirt S3"
     slug = "post-processor"
   }
+  component {
+    type = "post-processor"
+    name = "KubeVirt OCI"
+    slug = "oci"
+  }
 }

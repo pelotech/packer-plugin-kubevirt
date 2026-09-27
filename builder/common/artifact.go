@@ -7,6 +7,7 @@ const (
 	NamespaceArtifactKey                 = "namespace"
 	VirtualMachineExportNameArtifactKey  = "vmexport"
 	VirtualMachineExportTokenArtifactKey = "token"
+	PreferenceArtifactKey                = "preference"
 )
 
 // KubevirtArtifact packersdk.KubevirtArtifact implementation
