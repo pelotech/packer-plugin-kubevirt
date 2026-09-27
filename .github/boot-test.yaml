@@ -24,7 +24,7 @@ spec:
     spec:
       domain:
         cpu:
-          cores: 1
+          sockets: 1
         memory:
           guest: 2Gi
         devices:
