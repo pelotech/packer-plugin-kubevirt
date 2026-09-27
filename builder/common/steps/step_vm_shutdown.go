@@ -26,7 +26,6 @@ func (s *StepShutdownVM) Run(ctx context.Context, state multistep.StateBag) mult
 	communicator := state.Get("communicator").(packersdk.Communicator)
 
 	ui.Say(fmt.Sprintf("running the shutdown command in Virtual Machine %s/%s...", vm.Namespace, vm.Name))
-	// the connection is lost when the guest shuts down, the command may never report its end
 	commandEnd := make(chan error, 1)
 	go func() {
 		command := &packersdk.RemoteCmd{Command: s.ShutdownCommand}
@@ -37,14 +36,19 @@ func (s *StepShutdownVM) Run(ctx context.Context, state multistep.StateBag) mult
 		stopped <- k8s.WaitForVirtualMachineStopped(s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace), vm.Name, s.ShutdownTimeout)
 	}()
 
+	// the connection is lost when the guest shuts down: only a stopped Virtual Machine tells that the command worked
+	var commandErr error
 	for {
 		select {
-		case err := <-commandEnd:
-			if err != nil {
-				return appContext.Halt(fmt.Errorf("failed to run the shutdown command in Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
+		case commandErr = <-commandEnd:
+			if commandErr != nil {
+				ui.Message(fmt.Sprintf("the shutdown command ended with: %s", commandErr))
 			}
 			commandEnd = nil
 		case err := <-stopped:
+			if err != nil && commandErr != nil {
+				return appContext.Halt(fmt.Errorf("Virtual Machine %s/%s is still running after the shutdown command, which ended with: %s", vm.Namespace, vm.Name, commandErr))
+			}
 			if err != nil {
 				return appContext.Halt(fmt.Errorf("Virtual Machine %s/%s is still running after the shutdown command: %s", vm.Namespace, vm.Name, err))
 			}

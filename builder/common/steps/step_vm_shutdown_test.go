@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"errors"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,11 +19,12 @@ import (
 type blockingCommunicator struct {
 	packersdk.MockCommunicator
 	commands chan string
+	err      error
 }
 
 func (c *blockingCommunicator) Start(_ context.Context, command *packersdk.RemoteCmd) error {
 	c.commands <- command.Command
-	return nil
+	return c.err
 }
 
 func newShutdownStep(t *testing.T, status kubevirtv1.VirtualMachinePrintableStatus, command string) (*StepShutdownVM, multistep.StateBag, *blockingCommunicator, *kubevirtfake.Clientset) {
@@ -46,9 +48,7 @@ func newShutdownStep(t *testing.T, status kubevirtv1.VirtualMachinePrintableStat
 	return step, appContext.State, communicator, kubevirtClient
 }
 
-func TestStepShutdownVMWaitsForTheGuestToStop(t *testing.T) {
-	step, state, communicator, kubevirtClient := newShutdownStep(t, kubevirtv1.VirtualMachineStatusRunning, "sysprep.exe /generalize /oobe /shutdown")
-
+func stopLater(kubevirtClient *kubevirtfake.Clientset) {
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		vmClient := kubevirtClient.KubevirtV1().VirtualMachines("packer")
@@ -56,6 +56,12 @@ func TestStepShutdownVMWaitsForTheGuestToStop(t *testing.T) {
 		vm.Status.PrintableStatus = kubevirtv1.VirtualMachineStatusStopped
 		_, _ = vmClient.UpdateStatus(context.Background(), vm, metav1.UpdateOptions{})
 	}()
+}
+
+func TestStepShutdownVMWaitsForTheGuestToStop(t *testing.T) {
+	step, state, communicator, kubevirtClient := newShutdownStep(t, kubevirtv1.VirtualMachineStatusRunning, "sysprep.exe /generalize /oobe /shutdown")
+
+	stopLater(kubevirtClient)
 
 	started := time.Now()
 	if action := step.Run(context.Background(), state); action != multistep.ActionContinue {
@@ -74,6 +80,17 @@ func TestStepShutdownVMWaitsForTheGuestToStop(t *testing.T) {
 	}
 }
 
+func TestStepShutdownVMOutlivesTheConnection(t *testing.T) {
+	step, state, communicator, kubevirtClient := newShutdownStep(t, kubevirtv1.VirtualMachineStatusRunning, "sysprep.exe /generalize /oobe /shutdown")
+	// Sysprep takes WinRM down before the command reports anything
+	communicator.err = errors.New("unknown error Post \"http://127.0.0.1:5985/wsman\": EOF")
+	stopLater(kubevirtClient)
+
+	if action := step.Run(context.Background(), state); action != multistep.ActionContinue {
+		t.Fatalf("expected the step to continue once the Virtual Machine is stopped, got action: %v, error: %v", action, state.Get(string(common.PackerError)))
+	}
+}
+
 func TestStepShutdownVMWithoutCommandLeavesTheGuestAlone(t *testing.T) {
 	step, state, communicator, _ := newShutdownStep(t, kubevirtv1.VirtualMachineStatusRunning, "")
 
@@ -88,14 +105,15 @@ func TestStepShutdownVMWithoutCommandLeavesTheGuestAlone(t *testing.T) {
 }
 
 func TestStepShutdownVMGivesUpOnAGuestThatKeepsRunning(t *testing.T) {
-	step, state, _, _ := newShutdownStep(t, kubevirtv1.VirtualMachineStatusRunning, "echo")
+	step, state, communicator, _ := newShutdownStep(t, kubevirtv1.VirtualMachineStatusRunning, "echo")
 	step.ShutdownTimeout = 200 * time.Millisecond
+	communicator.err = errors.New("command not found")
 
 	if action := step.Run(context.Background(), state); action != multistep.ActionHalt {
 		t.Fatalf("expected the step to halt, got action: %v", action)
 	}
 	err, _ := state.Get(string(common.PackerError)).(error)
-	if err == nil || !strings.Contains(err.Error(), "shutdown command") {
-		t.Errorf("expected an error about the shutdown command, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "shutdown command") || !strings.Contains(err.Error(), "command not found") {
+		t.Errorf("expected an error with the one of the shutdown command, got: %v", err)
 	}
 }
