@@ -9,10 +9,12 @@ on:
 
 jobs:
   pre-commit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
-      - name: install pre-commit
-        run: pip install pre-commit
+      - name: tools setup
+        uses: jdx/mise-action@v4
+        with:
+          install_args: go packer prek
       - name: pre-commit
-        run: pre-commit run --all-files --show-diff-on-failure
+        run: prek run --all-files --show-diff-on-failure
