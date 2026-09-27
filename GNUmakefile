@@ -23,9 +23,6 @@ install-packer-sdc: ## Install packer software development command
 plugin-check: install-packer-sdc build
 	@packer-sdc plugin-check ${BINARY}
 
-testacc: dev
-	@PACKER_ACC=1 go test -count $(COUNT) -v $(TEST) -timeout=120m
-
 generate: install-packer-sdc
 	@go generate ./...
 	@rm -rf .docs
