@@ -95,8 +95,10 @@ func buildProbeExecCommand(family vm.OsFamily) []string {
 	switch family {
 	case vm.Linux:
 		command = []string{
-			"cloud-init",
-			"status",
+			// cloud-init exits with 2 when it is done with warnings
+			"/bin/sh",
+			"-c",
+			"cloud-init status | grep -q 'status: done'",
 		}
 	case vm.Windows:
 		command = []string{

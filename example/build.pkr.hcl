@@ -11,10 +11,10 @@ locals {
   images = {
     linux = [
       {
-        name               = "base-ubuntu-2204"
+        name               = "base-ubuntu-2604"
         os_distribution    = "ubuntu"
-        url                = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
-        disk_space         = "10Gi"
+        url                = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
+        disk_space         = "4Gi"
         deployment_timeout = "15m"
         export_timeout     = "10m"
       }
@@ -50,7 +50,7 @@ source "kubevirt-iso" "linux" {
   vm_disk_space          = local.images.linux.0.disk_space
   vm_cpu                 = var.vm_cpu    # Optional, default to '4'
   vm_memory              = var.vm_memory # Optional, default to '8Gi'
-  vm_linux_cloud_init    = file("${path.root}/../builder/common/k8s/generator/scripts/cloud-init.yaml")
+  vm_linux_cloud_init    = file("${path.root}/cloud-init.yaml")
   # Optional (default file will be picked up)
   vm_deployment_timeout        = local.images.linux.0.deployment_timeout # Optional, default to '10m'
   vm_export_timeout            = local.images.linux.0.export_timeout     # Optional, default to '5m'
@@ -108,6 +108,7 @@ build {
   #   }
 
   post-processor "kubevirt-s3" {
+    name                  = "s3"
     s3_bucket             = var.destination_aws_s3_bucket
     s3_key_prefix         = var.destination_aws_s3_key_prefix
     s3_endpoint_url       = var.destination_s3_endpoint_url # Optional
@@ -119,6 +120,7 @@ build {
   }
 
   post-processor "kubevirt-oci" {
+    name              = "oci"
     image             = var.destination_oci_image
     registry_username = var.destination_oci_registry_username # Optional
     registry_password = var.destination_oci_registry_password # Optional
@@ -127,6 +129,7 @@ build {
   }
 
   post-processor "kubevirt-datasource" {
+    name            = "datasource"
     datasource_name = "base-ubuntu" # Optional, default to the Kubernetes name
   }
 }

@@ -3,11 +3,18 @@
 # The image is uploaded to a Garage bucket, pushed to a registry and imported behind a DataSource,
 # all in the cluster: no AWS account and no registry account are needed.
 # A Virtual Machine is then started from the DataSource.
+#
+# A branch builds the example once per export, side by side.
+# main builds it once with the three exports in a row. A manual run does both.
 name: test plugin
 
 on:
   push:
   workflow_dispatch:
+
+concurrency:
+  group: test-plugin-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   PRODUCT_VERSION: "1.16.1"
@@ -15,18 +22,24 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Run Packer
+    name: Run Packer (${{ matrix.export }})
+    strategy:
+      fail-fast: false
+      matrix:
+        export: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["s3", "oci", "datasource", "all"]' || github.ref == 'refs/heads/main' && '["all"]' || '["s3", "oci", "datasource"]') }}
     env:
       working-directory: ./example
+      # post-processors of the example this leg does not run, by name
+      PACKER_EXCEPT: ${{ matrix.export == 's3' && 'oci,datasource' || matrix.export == 'oci' && 's3,datasource' || matrix.export == 'datasource' && 's3,oci' || '' }}
       # bucket of example/values.auto.pkrvars.hcl
       S3_BUCKET: pelotech-vm-images
       # the upload runs in a pod, it reaches Garage through its service
       PKR_VAR_destination_s3_endpoint_url: "http://garage.garage.svc.cluster.local:3900"
       PKR_VAR_destination_aws_s3_key_prefix: "ci/"
       OCI_REPOSITORY: pelotech/base-ubuntu
-      OCI_TAG: "22.04"
+      OCI_TAG: "26.04"
       # the push runs in a pod, it reaches the registry through its service
-      PKR_VAR_destination_oci_image: "registry.registry.svc.cluster.local:5000/pelotech/base-ubuntu:22.04"
+      PKR_VAR_destination_oci_image: "registry.registry.svc.cluster.local:5000/pelotech/base-ubuntu:26.04"
       PKR_VAR_destination_oci_registry_insecure: "true"
       # sized for GitHub-hosted runners (4 CPUs, 16Gi)
       PKR_VAR_vm_cpu: "2"
@@ -88,6 +101,7 @@ jobs:
           # kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'
 
       - name: garage install
+        if: matrix.export == 's3' || matrix.export == 'all'
         run: |
           kubectl create namespace garage
           kubectl create secret generic garage --namespace garage --from-literal=rpc-secret="$(openssl rand -hex 32)"
@@ -109,6 +123,7 @@ jobs:
           echo "PKR_VAR_destination_aws_secret_access_key=${secret_access_key}" >> "${GITHUB_ENV}"
 
       - name: registry install
+        if: matrix.export == 'oci' || matrix.export == 'all'
         run: |
           kubectl create namespace registry
           kubectl apply -f .github/registry.yaml
@@ -165,14 +180,15 @@ jobs:
       - name: packer validate
         working-directory: ${{ env.working-directory }}
         run: |
-          packer validate .
+          packer validate ${PACKER_EXCEPT:+-except=${PACKER_EXCEPT}} .
 
       - name: packer build
         working-directory: ${{ env.working-directory }}
         run: |
-          PACKER_LOG=1 packer build .
+          PACKER_LOG=1 packer build ${PACKER_EXCEPT:+-except=${PACKER_EXCEPT}} .
 
       - name: check the image in the bucket
+        if: matrix.export == 's3' || matrix.export == 'all'
         env:
           AWS_ACCESS_KEY_ID: ${{ env.PKR_VAR_destination_aws_access_key_id }}
           AWS_SECRET_ACCESS_KEY: ${{ env.PKR_VAR_destination_aws_secret_access_key }}
@@ -180,9 +196,10 @@ jobs:
         run: |
           kubectl port-forward --namespace garage service/garage 3900:3900 &
           curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:3900
-          aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_aws_s3_key_prefix}base-ubuntu-2204.img.gz"
+          aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_aws_s3_key_prefix}base-ubuntu-2604.img.gz"
 
       - name: check the image in the registry
+        if: matrix.export == 'oci' || matrix.export == 'all'
         run: |
           kubectl port-forward --namespace registry service/registry 5000:5000 &
           curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:5000/v2/
@@ -192,6 +209,7 @@ jobs:
           echo "${manifest}" | jq --exit-status '.layers | length == 1'
 
       - name: check the DataSource and boot a Virtual Machine from it
+        if: matrix.export == 'datasource' || matrix.export == 'all'
         run: |
           kubectl wait datasource/base-ubuntu --namespace packer-linux --for=condition=Ready --timeout=1m
           test "$(kubectl get datasource base-ubuntu --namespace packer-linux --output jsonpath='{.metadata.labels.instancetype\.kubevirt\.io/default-preference}')" = ubuntu
@@ -206,6 +224,6 @@ jobs:
           kubectl get virtualmachines,virtualmachineinstances,datavolumes,datasources,virtualmachineexports,persistentvolumeclaims,jobs,pods --all-namespaces --output wide
           kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 50
           kubectl describe pods --namespace garage
-          kubectl logs --namespace garage deployment/garage --tail 100
+          kubectl logs --namespace garage deployment/garage --tail 100 || true
           kubectl describe pods --namespace registry
-          kubectl logs --namespace registry deployment/registry --tail 100
+          kubectl logs --namespace registry deployment/registry --tail 100 || true

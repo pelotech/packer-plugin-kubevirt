@@ -27,7 +27,7 @@ The registry has to be reachable from the cluster. The job builds an image archi
 
 **Required**
 
-- `image` (string) -  Image the disk is pushed to, with its registry and its tag. Example: `ghcr.io/pelotech/base-ubuntu:22.04`
+- `image` (string) -  Image the disk is pushed to, with its registry and its tag. Example: `ghcr.io/pelotech/base-ubuntu:26.04`
 An image without a tag or with a digest is rejected, the digest is only known once the image is pushed
 
 <!--
@@ -86,7 +86,7 @@ build {
   sources = ["source.kubevirt-iso.linux"]
 
   post-processor "kubevirt-oci" {
-    image                 = "ghcr.io/pelotech/base-ubuntu:22.04"
+    image                 = "ghcr.io/pelotech/base-ubuntu:26.04"
     registry_username     = "REGISTRY_USERNAME"
     registry_password     = "REGISTRY_PASSWORD"
     image_format          = "qcow2"                       # Optional
@@ -102,5 +102,5 @@ The image can then be used by a Virtual Machine:
 volumes:
   - name: disk
     containerDisk:
-      image: ghcr.io/pelotech/base-ubuntu:22.04
+      image: ghcr.io/pelotech/base-ubuntu:26.04
 ```
