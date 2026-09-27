@@ -48,6 +48,8 @@ source "kubevirt-iso" "linux" {
   ]
   kubevirt_os_preference = local.images.linux.0.os_distribution
   vm_disk_space          = local.images.linux.0.disk_space
+  vm_cpu                 = var.vm_cpu    # Optional, default to '4'
+  vm_memory              = var.vm_memory # Optional, default to '8Gi'
   vm_linux_cloud_init    = file("${path.root}/../builder/common/k8s/generator/scripts/cloud-init.yaml")
   # Optional (default file will be picked up)
   vm_deployment_timeout        = local.images.linux.0.deployment_timeout # Optional, default to '10m'
@@ -75,6 +77,8 @@ source "kubevirt-iso" "windows" {
   ]
   kubevirt_os_preference       = local.images.windows.0.os_distribution
   vm_disk_space                = local.images.windows.0.disk_space
+  vm_cpu                       = var.vm_cpu
+  vm_memory                    = var.vm_memory
   vm_windows_sysprep           = file("${path.root}/../builder/common/k8s/generator/scripts/autounattend.xml")
   vm_deployment_timeout        = local.images.windows.0.deployment_timeout
   vm_export_timeout            = local.images.windows.0.export_timeout

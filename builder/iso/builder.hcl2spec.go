@@ -78,6 +78,8 @@ type FlatConfig struct {
 	SourceAWSAccessKeyId            *string             `mapstructure:"source_aws_access_key_id" required:"false" cty:"source_aws_access_key_id" hcl:"source_aws_access_key_id"`
 	SourceAWSSecretAccessKey        *string             `mapstructure:"source_aws_secret_access_key" required:"false" cty:"source_aws_secret_access_key" hcl:"source_aws_secret_access_key"`
 	VirtualMachineDiskSpace         *string             `mapstructure:"vm_disk_space" cty:"vm_disk_space" hcl:"vm_disk_space"`
+	VirtualMachineCPU               *string             `mapstructure:"vm_cpu" required:"false" cty:"vm_cpu" hcl:"vm_cpu"`
+	VirtualMachineMemory            *string             `mapstructure:"vm_memory" required:"false" cty:"vm_memory" hcl:"vm_memory"`
 	VirtualMachineDeploymentTimeOut *string             `mapstructure:"vm_deployment_timeout" required:"false" cty:"vm_deployment_timeout" hcl:"vm_deployment_timeout"`
 	VirtualMachineExportTimeOut     *string             `mapstructure:"vm_export_timeout" required:"false" cty:"vm_export_timeout" hcl:"vm_export_timeout"`
 	VirtualMachineLinuxCloudInit    *string             `mapstructure:"vm_linux_cloud_init" required:"false" cty:"vm_linux_cloud_init" hcl:"vm_linux_cloud_init"`
@@ -164,6 +166,8 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"source_aws_access_key_id":     &hcldec.AttrSpec{Name: "source_aws_access_key_id", Type: cty.String, Required: false},
 		"source_aws_secret_access_key": &hcldec.AttrSpec{Name: "source_aws_secret_access_key", Type: cty.String, Required: false},
 		"vm_disk_space":                &hcldec.AttrSpec{Name: "vm_disk_space", Type: cty.String, Required: false},
+		"vm_cpu":                       &hcldec.AttrSpec{Name: "vm_cpu", Type: cty.String, Required: false},
+		"vm_memory":                    &hcldec.AttrSpec{Name: "vm_memory", Type: cty.String, Required: false},
 		"vm_deployment_timeout":        &hcldec.AttrSpec{Name: "vm_deployment_timeout", Type: cty.String, Required: false},
 		"vm_export_timeout":            &hcldec.AttrSpec{Name: "vm_export_timeout", Type: cty.String, Required: false},
 		"vm_linux_cloud_init":          &hcldec.AttrSpec{Name: "vm_linux_cloud_init", Type: cty.String, Required: false},

@@ -53,6 +53,12 @@ Defaults to no node selector
 - `kubernetes_tolerations` ([]map[string]string) - Kubernetes tolerations resources should support to get eligible to the desired node
 Defaults to no toleration
 
+- `vm_cpu` (string) - CPUs requested by the VM
+Defaults to `4`
+
+- `vm_memory` (string) - Memory requested by the VM
+Defaults to `8Gi`
+
 - `vm_linux_cloud_init` (string) - Cloud-init file content to inject into the VM at first boot.
 Defaults to a default cloud-init file available in the source code
 
@@ -118,6 +124,8 @@ source "kubevirt-iso" "ubuntu" {
   kubevirt_os_preference      = "ubuntu"
   vm_disk_space               = "10Gi"
   # Optional fields
+  vm_cpu                       = "2"                              # default to '4'
+  vm_memory                    = "4Gi"                            # default to '8Gi'
   vm_linux_cloud_init          = file("/path/to/cloud-init.yaml") # default to generic cloud-init file
   vm_deployment_timeout        = "15m"                            # default to '10m'
   vm_export_timeout            = "10m"                            # default to '5m'
