@@ -1,8 +1,22 @@
 package iso
 
 import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"github.com/hashicorp/packer-plugin-sdk/communicator"
+	"github.com/hashicorp/packer-plugin-sdk/communicator/sshkey"
+	"github.com/hashicorp/packer-plugin-sdk/multistep"
+	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	gossh "golang.org/x/crypto/ssh"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPrepareRejectsInvalidResources(t *testing.T) {
@@ -30,5 +44,252 @@ func TestDecodeTolerations(t *testing.T) {
 	toleration := tolerations[0]
 	if toleration.Key != "pelo.tech/kvm" || toleration.Operator != "Equal" || toleration.Value != "true" || toleration.Effect != "NoSchedule" {
 		t.Errorf("unexpected toleration: %+v", toleration)
+	}
+}
+
+type login struct {
+	user   string
+	secret string
+}
+
+func startSSHServer(t *testing.T) (int, chan login) {
+	_, hostKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate the host key: %v", err)
+	}
+	hostSigner, err := gossh.NewSignerFromKey(hostKey)
+	if err != nil {
+		t.Fatalf("failed to read the host key: %v", err)
+	}
+
+	logins := make(chan login, 10)
+	config := &gossh.ServerConfig{
+		PasswordCallback: func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
+			logins <- login{conn.User(), string(password)}
+			return nil, nil
+		},
+		PublicKeyCallback: func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
+			logins <- login{conn.User(), string(gossh.MarshalAuthorizedKey(key))}
+			return nil, nil
+		},
+	}
+	config.AddHostKey(hostSigner)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				_, channels, requests, err := gossh.NewServerConn(conn, config)
+				if err != nil {
+					return
+				}
+				go gossh.DiscardRequests(requests)
+				for channel := range channels {
+					_ = channel.Reject(gossh.Prohibited, "the test server only checks the login")
+				}
+			}()
+		}
+	}()
+
+	return listener.Addr().(*net.TCPAddr).Port, logins
+}
+
+func TestCommunicatorReceivesSSHSettings(t *testing.T) {
+	t.Setenv("SSH_AUTH_SOCK", "")
+	keyPair, err := sshkey.GeneratePair(sshkey.ED25519, nil, 0)
+	if err != nil {
+		t.Fatalf("failed to generate a key pair: %v", err)
+	}
+	keyFile := filepath.Join(t.TempDir(), "id_ed25519")
+	if err = os.WriteFile(keyFile, keyPair.Private, 0600); err != nil {
+		t.Fatalf("failed to write the private key: %v", err)
+	}
+
+	tests := map[string]struct {
+		settings communicator.SSH
+		expected login
+	}{
+		"defaults": {
+			expected: login{"packer", "packer"},
+		},
+		"user name and password": {
+			settings: communicator.SSH{SSHUsername: "ubuntu", SSHPassword: "secret"},
+			expected: login{"ubuntu", "secret"},
+		},
+		"private key": {
+			settings: communicator.SSH{SSHUsername: "ubuntu", SSHPrivateKeyFile: keyFile},
+			expected: login{"ubuntu", string(keyPair.Public)},
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			port, logins := startSSHServer(t)
+			comm := communicator.Config{Type: "ssh", SSH: test.settings}
+			comm.SSHPort = port
+			if _, err := prepareCommunicator(&comm); err != nil {
+				t.Fatalf("expected the communicator settings to be valid, got: %v", err)
+			}
+
+			state := new(multistep.BasicStateBag)
+			state.Put("ui", packersdk.TestUi(t))
+			action := connectStep(&comm).Run(context.Background(), state)
+
+			if action != multistep.ActionContinue {
+				t.Fatalf("expected the communicator to connect, got: %v", state.Get("error"))
+			}
+			if actual := <-logins; actual != test.expected {
+				t.Errorf("expected login %v, got: %v", test.expected, actual)
+			}
+		})
+	}
+}
+
+func TestCommunicatorReceivesWinRMSettings(t *testing.T) {
+	tests := map[string]struct {
+		settings communicator.WinRM
+		expected login
+	}{
+		"defaults": {
+			expected: login{"packer", "packer"},
+		},
+		"user name and password": {
+			settings: communicator.WinRM{WinRMUser: "administrator", WinRMPassword: "secret"},
+			expected: login{"administrator", "secret"},
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			logins := make(chan login, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				user, password, _ := request.BasicAuth()
+				select {
+				case logins <- login{user, password}:
+				default:
+				}
+				response.WriteHeader(http.StatusUnauthorized)
+			}))
+			defer server.Close()
+
+			comm := communicator.Config{Type: "winrm", WinRM: test.settings}
+			comm.WinRMPort = server.Listener.Addr().(*net.TCPAddr).Port
+			if _, err := prepareCommunicator(&comm); err != nil {
+				t.Fatalf("expected the communicator settings to be valid, got: %v", err)
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			state := new(multistep.BasicStateBag)
+			state.Put("ui", packersdk.TestUi(t))
+			stepEnded := make(chan struct{})
+			go func() {
+				connectStep(&comm).Run(ctx, state)
+				close(stepEnded)
+			}()
+
+			select {
+			case actual := <-logins:
+				if actual != test.expected {
+					t.Errorf("expected login %v, got: %v", test.expected, actual)
+				}
+			case <-time.After(5 * time.Second):
+				t.Error("expected the communicator to send a login")
+			}
+			cancel()
+			<-stepEnded
+		})
+	}
+}
+
+func TestPrepareCommunicatorValidatesSettings(t *testing.T) {
+	tests := map[string]struct {
+		comm     communicator.Config
+		expected string
+	}{
+		"unsupported type": {
+			comm:     communicator.Config{Type: "docker"},
+			expected: "unsupported communicator type",
+		},
+		"password without user name": {
+			comm:     communicator.Config{Type: "ssh", SSH: communicator.SSH{SSHPassword: "secret"}},
+			expected: "ssh_username must be specified",
+		},
+		"missing private key": {
+			comm:     communicator.Config{Type: "ssh", SSH: communicator.SSH{SSHUsername: "ubuntu", SSHPrivateKeyFile: "missing"}},
+			expected: "ssh_private_key_file is invalid",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := prepareCommunicator(&test.comm)
+			if err == nil || !strings.Contains(err.Error(), test.expected) {
+				t.Errorf("expected an error containing %q, got: %v", test.expected, err)
+			}
+		})
+	}
+}
+
+func TestPrepareCommunicatorLocalPort(t *testing.T) {
+	tests := map[string]struct {
+		comm     communicator.Config
+		expected int
+	}{
+		"ssh port left to the port forwarding": {
+			comm:     communicator.Config{Type: "ssh"},
+			expected: 0,
+		},
+		"winrm port left to the port forwarding": {
+			comm:     communicator.Config{Type: "winrm"},
+			expected: 0,
+		},
+		"ssh port of the user": {
+			comm:     communicator.Config{Type: "ssh", SSH: communicator.SSH{SSHPort: 2200}},
+			expected: 2200,
+		},
+		"winrm port of the user": {
+			comm:     communicator.Config{Type: "winrm", WinRM: communicator.WinRM{WinRMPort: 5900}},
+			expected: 5900,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := prepareCommunicator(&test.comm); err != nil {
+				t.Fatalf("expected the communicator settings to be valid, got: %v", err)
+			}
+			if actual := test.comm.Port(); actual != test.expected {
+				t.Errorf("expected local port %d, got: %d", test.expected, actual)
+			}
+		})
+	}
+}
+
+func TestPrepareCommunicatorRejectsReservedPort(t *testing.T) {
+	tests := map[string]communicator.Config{
+		"ssh":   {Type: "ssh", SSH: communicator.SSH{SSHPort: 1023}},
+		"winrm": {Type: "winrm", WinRM: communicator.WinRM{WinRMPort: 1023}},
+	}
+	for name, comm := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := prepareCommunicator(&comm)
+			if err == nil || !strings.Contains(err.Error(), "reserved") {
+				t.Errorf("expected a reserved port error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestPrepareCommunicatorKeepsWinRMTimeout(t *testing.T) {
+	comm := communicator.Config{Type: "winrm"}
+	if _, err := prepareCommunicator(&comm); err != nil {
+		t.Fatalf("expected the communicator settings to be valid, got: %v", err)
+	}
+	if comm.WinRMTimeout != 30*time.Second {
+		t.Errorf("expected a WinRM timeout of 30s, got: %s", comm.WinRMTimeout)
 	}
 }

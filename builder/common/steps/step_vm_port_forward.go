@@ -14,7 +14,7 @@ import (
 
 type StepPortForwardVM struct {
 	Clients  *k8s.Clients
-	Comm     communicator.Config
+	Comm     *communicator.Config
 	stopChan chan struct{}
 }
 
@@ -24,10 +24,7 @@ func (s *StepPortForwardVM) Run(ctx context.Context, state multistep.StateBag) m
 
 	portMappings, err := s.computePortMappings()
 	if err != nil {
-		appContext.Put(common.PackerError, err)
-		ui.Error(err.Error())
-
-		return multistep.ActionHalt
+		return appContext.Halt(err)
 	}
 
 	vm := appContext.GetVirtualMachine()
@@ -37,41 +34,35 @@ func (s *StepPortForwardVM) Run(ctx context.Context, state multistep.StateBag) m
 		}).String(),
 	})
 	if err != nil || len(pods.Items) < 1 {
-		err := fmt.Errorf("failed to get pod name for port-forwarding Virtual Machine %s/%s: %w", vm.Namespace, vm.Name, err)
-		appContext.Put(common.PackerError, err)
-		ui.Error(err.Error())
-
-		return multistep.ActionHalt
+		return appContext.Halt(fmt.Errorf("failed to get pod name for port-forwarding Virtual Machine %s/%s: %w", vm.Namespace, vm.Name, err))
 	}
 
 	stopChan, err := k8s.RunAsyncPortForward(s.Clients, pods.Items[0].Name, vm.Namespace, portMappings)
 	if err != nil {
-		err := fmt.Errorf("failed to port-forward Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err)
-		appContext.Put(common.PackerError, err)
-		ui.Error(err.Error())
-
-		return multistep.ActionHalt
+		return appContext.Halt(fmt.Errorf("failed to port-forward Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
 	}
 	s.stopChan = stopChan
 
-	ui.Say(fmt.Sprintf("port-forwarding step has completed for Virtual Machine %s/%s", vm.Namespace, vm.Name))
+	ui.Say(fmt.Sprintf("port-forwarding step has completed for Virtual Machine %s/%s on local port %d", vm.Namespace, vm.Name, s.Comm.Port()))
 
 	return multistep.ActionContinue
 }
 
 func (s *StepPortForwardVM) computePortMappings() ([]string, error) {
-	var portMapping string
-	switch s.Comm.Type {
-	case "ssh":
-		portMapping = fmt.Sprintf("%d:%d", common.GetOrDefault(s.Comm.SSHPort, common.DefaultSSHPort), common.DefaultSSHPort)
-	case "winrm":
+	localPort, remotePort := &s.Comm.SSHPort, common.DefaultSSHPort
+	if s.Comm.Type == "winrm" {
 		// NOTE: sysprep has the current DefaultWinRMPort value hardcoded, please change that value carefully while the sysprep conf. is not templated.
-		portMapping = fmt.Sprintf("%d:%d", common.GetOrDefault(s.Comm.WinRMPort, common.DefaultWinRMPort), common.DefaultWinRMPort)
-	default:
-		return nil, fmt.Errorf("unsupported communicator type, allowed values: 'ssh', 'winrm'")
+		localPort, remotePort = &s.Comm.WinRMPort, common.DefaultWinRMPort
+	}
+	if *localPort == 0 {
+		freePort, err := common.FindFreePort()
+		if err != nil {
+			return nil, err
+		}
+		*localPort = freePort
 	}
 
-	return []string{portMapping}, nil
+	return []string{fmt.Sprintf("%d:%d", *localPort, remotePort)}, nil
 }
 
 func (s *StepPortForwardVM) Cleanup(_ multistep.StateBag) {
