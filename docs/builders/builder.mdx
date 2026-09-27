@@ -21,6 +21,7 @@ The ISO builder is mostly used to create base VM images, an ISO or a cloud image
 The builder runs against the Kubernetes cluster of your current kube context, with KubeVirt 1.9 or later and CDI installed.
 Once provisioned, the Virtual Machine is stopped, Linux disks are generalized with `virt-sysprep`
 (running as a Kubernetes job in the cluster, nothing to install locally) and the disk is exposed through a Virtual Machine Export.
+The export owns the stopped Virtual Machine: the disk stays as long as the export, and deleting the export removes the Virtual Machine and its disk.
 Windows is generalized by your shutdown command, see [Windows](#windows). `vm_skip_virt_sysprep` skips `virt-sysprep` for Linux.
 
 <!-- Builder Configuration Fields -->

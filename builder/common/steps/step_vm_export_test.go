@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
@@ -19,6 +20,7 @@ import (
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	vmctx "packer-plugin-kubevirt/builder/common/vm"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -171,5 +173,80 @@ func TestCreateExportLeavesOtherErrorsAsTheyAre(t *testing.T) {
 
 	if !k8serrors.IsAlreadyExists(err) || strings.Contains(err.Error(), "KubeVirt") {
 		t.Errorf("expected the error of the server only, got: %v", err)
+	}
+}
+
+func TestStepExportVMHandsTheVirtualMachineToItsExport(t *testing.T) {
+	vm := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+	}
+	kubevirtClient := kubevirtfake.NewSimpleClientset(vm)
+	kubevirtClient.PrependReactor("create", "virtualmachineexports", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		action.(k8stesting.CreateAction).GetObject().(*exportv1.VirtualMachineExport).UID = "export-uid"
+		return false, nil, nil
+	})
+	watcher := watch.NewFakeWithChanSize(1, false)
+	kubevirtClient.PrependWatchReactor("virtualmachineexports", k8stesting.DefaultWatchReactor(watcher, nil))
+	watcher.Modify(&exportv1.VirtualMachineExport{
+		Status: &exportv1.VirtualMachineExportStatus{Phase: exportv1.Ready},
+	})
+
+	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
+	appContext.Put(common.PackerUi, packersdk.TestUi(t))
+	appContext.Put(common.VirtualMachine, vm)
+
+	step := &StepExportVM{Clients: &k8s.Clients{Kubernetes: k8sfake.NewSimpleClientset(), Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
+	if action := step.Run(context.Background(), appContext.State); action != multistep.ActionContinue {
+		t.Fatalf("expected the step to continue, got action: %v, error: %v", action, appContext.GetPackerError())
+	}
+
+	updatedVm, err := kubevirtClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get the Virtual Machine: %v", err)
+	}
+	// not a controller and not blocking: deleting the export removes the Virtual Machine, then its disk
+	expected := []metav1.OwnerReference{{
+		APIVersion:         "export.kubevirt.io/v1",
+		Kind:               "VirtualMachineExport",
+		Name:               "base-ubuntu",
+		UID:                "export-uid",
+		Controller:         ptr.To(false),
+		BlockOwnerDeletion: ptr.To(false),
+	}}
+	if !reflect.DeepEqual(updatedVm.OwnerReferences, expected) {
+		t.Errorf("expected the Virtual Machine to be owned by its export, got: %+v", updatedVm.OwnerReferences)
+	}
+	if !appContext.IsVirtualMachineOwnedByExport() {
+		t.Errorf("expected the hand over to be recorded")
+	}
+}
+
+func TestStepExportVMCleanup(t *testing.T) {
+	for name, test := range map[string]struct {
+		failure    string
+		keepExport bool
+	}{
+		"successful build": {failure: "", keepExport: true},
+		"halted build":     {failure: multistep.StateHalted, keepExport: false},
+		"cancelled build":  {failure: multistep.StateCancelled, keepExport: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			export := &exportv1.VirtualMachineExport{ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"}}
+			kubevirtClient := kubevirtfake.NewSimpleClientset(export)
+			appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
+			appContext.Put(common.PackerUi, packersdk.TestUi(t))
+			appContext.Put(common.VirtualMachineExport, export)
+			if test.failure != "" {
+				appContext.State.Put(test.failure, true)
+			}
+
+			step := &StepExportVM{Clients: &k8s.Clients{Kubevirt: kubevirtClient}}
+			step.Cleanup(appContext.State)
+
+			_, err := kubevirtClient.ExportV1().VirtualMachineExports(export.Namespace).Get(context.Background(), export.Name, metav1.GetOptions{})
+			if kept := err == nil; kept != test.keepExport {
+				t.Errorf("expected the export to be kept: %t, got: %t (%v)", test.keepExport, kept, err)
+			}
+		})
 	}
 }

@@ -51,7 +51,7 @@ Accepted values: `qcow2`, `vmdk`, `vhdx`, `vdi` - Defaults to empty string (comp
 Defaults to `10m`
 
 - `keep_export` (bool) -  Keep the Virtual Machine Export once done, for another post-processor to use it.
-The last post-processor of a build should delete it
+The last post-processor of a build should delete it: with the export go the stopped Virtual Machine and its disk. Otherwise they stay until the export expires, after 2 hours by default
 Defaults to `false`
 
 <!--

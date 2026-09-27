@@ -83,6 +83,11 @@ jobs:
           curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:3900
           aws s3 cp --endpoint-url http://localhost:3900 --no-progress "s3://${S3_BUCKET}/${PKR_VAR_destination_aws_s3_key_prefix}${VM_NAME}.qcow2" "${RUNNER_TEMP}/${VM_NAME}.qcow2"
 
+      - name: check that the build leaves nothing behind
+        # the s3 post-processor, the only one, deletes the export
+        run: |
+          timeout 120 bash -c "while kubectl get virtualmachineexport ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get virtualmachine ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${VM_NAME}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
+
       - name: check that the image holds a generalized Windows
         run: |
           sudo apt-get update > /dev/null

@@ -49,6 +49,9 @@ jobs:
         export: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["s3", "oci", "datasource", "all"]' || github.ref == 'refs/heads/main' && '["all"]' || '["s3", "oci", "datasource"]') }}
     env:
       working-directory: ./example/ubuntu-26.04
+      # the Virtual Machine of the example, its export has the same name
+      VM_NAME: base-ubuntu-2604
+      VM_NAMESPACE: packer-linux
       # post-processors of the example this leg does not run, by name
       PACKER_EXCEPT: ${{ matrix.export == 's3' && 'oci,datasource' || matrix.export == 'oci' && 's3,datasource' || matrix.export == 'datasource' && 's3,oci' || '' }}
       S3_BUCKET: pelotech-vm-images
@@ -171,6 +174,24 @@ jobs:
           test "$(kubectl get virtualmachine boot-test --namespace packer-linux --output jsonpath='{.spec.preference.name}')" = ubuntu
           kubectl wait virtualmachine/boot-test --namespace packer-linux --for=condition=Ready --timeout=10m
           kubectl wait virtualmachineinstance/boot-test --namespace packer-linux --for=condition=AgentConnected --timeout=5m
+
+      - name: check that the disk outlives a restart of the export server
+        # the s3 post-processor keeps its export
+        if: matrix.export == 's3'
+        run: |
+          kubectl delete pod "virt-export-${VM_NAME}" --namespace "${VM_NAMESPACE}"
+          timeout 300 bash -c "until kubectl get pod virt-export-${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
+          kubectl wait pod "virt-export-${VM_NAME}" --namespace "${VM_NAMESPACE}" --for=condition=Ready --timeout=5m
+          test -z "$(kubectl get persistentvolumeclaim "${VM_NAME}-source" --namespace "${VM_NAMESPACE}" --output jsonpath='{.metadata.deletionTimestamp}')"
+
+          kubectl delete virtualmachineexport "${VM_NAME}" --namespace "${VM_NAMESPACE}"
+          timeout 120 bash -c "while kubectl get virtualmachine ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${VM_NAME}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
+
+      - name: check that the build leaves nothing behind
+        # the datasource post-processor, the last one, deletes the export
+        if: matrix.export == 'datasource' || matrix.export == 'all'
+        run: |
+          timeout 120 bash -c "while kubectl get virtualmachineexport ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get virtualmachine ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${VM_NAME}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
 
       - name: display cluster state
         if: failure()
