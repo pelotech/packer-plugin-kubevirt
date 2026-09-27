@@ -15,14 +15,12 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"log"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/vm"
-	"strings"
 	"time"
 )
 
@@ -52,7 +50,6 @@ type Config struct {
 
 type Builder struct {
 	config  Config
-	runner  multistep.Runner
 	clients *k8s.Clients
 }
 
@@ -156,8 +153,7 @@ func decodeTolerations(rawTolerations []map[string]string) []v1.Toleration {
 	for _, rawToleration := range rawTolerations {
 		var toleration v1.Toleration
 		serializedToleration, _ := json.Marshal(rawToleration)
-		reader := strings.NewReader(string(serializedToleration))
-		err := yaml.NewYAMLOrJSONDecoder(reader, 4096).Decode(&toleration)
+		err := json.Unmarshal(serializedToleration, &toleration)
 		if err != nil {
 			log.Printf("Error deserializing tolerations: %s", err)
 		}
@@ -213,8 +209,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 	}
 
 	// Run!
-	b.runner = commonsteps.NewRunner(steps, b.config.PackerConfig, ui)
-	b.runner.Run(ctx, state)
+	runner := commonsteps.NewRunner(steps, b.config.PackerConfig, ui)
+	runner.Run(ctx, state)
 
 	// If there was an error, return that
 	err := appContext.GetPackerError()

@@ -51,6 +51,7 @@ func TestGenerateStartupScriptSecretForWindows(t *testing.T) {
 				Name:             "base-windows",
 				Namespace:        "packer",
 				OsDistribution:   "windows.10.virtio",
+				OsFamily:         vm.Windows,
 				UserProvisioning: UserProvisioning{Sysprep: test.sysprep},
 			})
 			if err != nil {

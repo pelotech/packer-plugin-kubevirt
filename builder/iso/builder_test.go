@@ -33,6 +33,20 @@ func TestPrepareRejectsInvalidResources(t *testing.T) {
 	}
 }
 
+func TestDecodeTolerations(t *testing.T) {
+	tolerations := decodeTolerations([]map[string]string{
+		{"key": "pelo.tech/kvm", "operator": "Equal", "value": "true", "effect": "NoSchedule"},
+	})
+
+	if len(tolerations) != 1 {
+		t.Fatalf("expected one toleration, got: %v", tolerations)
+	}
+	toleration := tolerations[0]
+	if toleration.Key != "pelo.tech/kvm" || toleration.Operator != "Equal" || toleration.Value != "true" || toleration.Effect != "NoSchedule" {
+		t.Errorf("unexpected toleration: %+v", toleration)
+	}
+}
+
 type login struct {
 	user   string
 	secret string
