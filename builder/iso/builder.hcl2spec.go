@@ -73,6 +73,8 @@ type FlatConfig struct {
 	BootWait                        *string             `mapstructure:"boot_wait" cty:"boot_wait" hcl:"boot_wait"`
 	BootCommand                     []string            `mapstructure:"boot_command" cty:"boot_command" hcl:"boot_command"`
 	BootKeyInterval                 *string             `mapstructure:"boot_key_interval" required:"false" cty:"boot_key_interval" hcl:"boot_key_interval"`
+	ShutdownCommand                 *string             `mapstructure:"shutdown_command" required:"false" cty:"shutdown_command" hcl:"shutdown_command"`
+	ShutdownTimeout                 *string             `mapstructure:"shutdown_timeout" required:"false" cty:"shutdown_timeout" hcl:"shutdown_timeout"`
 	KubernetesName                  *string             `mapstructure:"kubernetes_name" cty:"kubernetes_name" hcl:"kubernetes_name"`
 	KubernetesNamespace             *string             `mapstructure:"kubernetes_namespace" cty:"kubernetes_namespace" hcl:"kubernetes_namespace"`
 	KubernetesNodeSelectors         map[string]string   `mapstructure:"kubernetes_node_selectors" cty:"kubernetes_node_selectors" hcl:"kubernetes_node_selectors"`
@@ -165,6 +167,8 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"boot_wait":                    &hcldec.AttrSpec{Name: "boot_wait", Type: cty.String, Required: false},
 		"boot_command":                 &hcldec.AttrSpec{Name: "boot_command", Type: cty.List(cty.String), Required: false},
 		"boot_key_interval":            &hcldec.AttrSpec{Name: "boot_key_interval", Type: cty.String, Required: false},
+		"shutdown_command":             &hcldec.AttrSpec{Name: "shutdown_command", Type: cty.String, Required: false},
+		"shutdown_timeout":             &hcldec.AttrSpec{Name: "shutdown_timeout", Type: cty.String, Required: false},
 		"kubernetes_name":              &hcldec.AttrSpec{Name: "kubernetes_name", Type: cty.String, Required: false},
 		"kubernetes_namespace":         &hcldec.AttrSpec{Name: "kubernetes_namespace", Type: cty.String, Required: false},
 		"kubernetes_node_selectors":    &hcldec.AttrSpec{Name: "kubernetes_node_selectors", Type: cty.Map(cty.String), Required: false},

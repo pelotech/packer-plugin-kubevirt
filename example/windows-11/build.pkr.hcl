@@ -28,6 +28,10 @@ source "kubevirt-iso" "windows" {
 
   communicator  = "winrm"
   winrm_timeout = "10m"
+
+  # Sysprep generalizes Windows, then shuts it down. WinRM goes away while it runs
+  shutdown_command = "C:\\Windows\\System32\\Sysprep\\Sysprep.exe /generalize /oobe /shutdown /quiet /unattend:C:\\Windows\\Temp\\unattend.xml"
+  shutdown_timeout = "30m"
 }
 
 build {
@@ -37,14 +41,10 @@ build {
     inline = ["Get-ComputerInfo -Property OsName, OsVersion, BiosFirmwareType | Format-List"]
   }
 
+  # read by the shutdown command
   provisioner "file" {
     source      = "${path.root}/unattend.xml"
     destination = "C:\\Windows\\Temp\\unattend.xml"
-  }
-
-  # last provisioner: Windows is generalized and left running, the builder stops it
-  provisioner "powershell" {
-    script = "${path.root}/generalize.ps1"
   }
 
   post-processor "kubevirt-s3" {

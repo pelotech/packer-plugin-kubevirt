@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
 	"github.com/hashicorp/packer-plugin-sdk/packer"
+	"github.com/hashicorp/packer-plugin-sdk/shutdowncommand"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	v1 "k8s.io/api/core/v1"
@@ -34,7 +35,8 @@ type Config struct {
 	common.PackerConfig             `mapstructure:",squash"`
 	Comm                            communicator.Config `mapstructure:",squash"`
 	bootcommand.BootConfig          `mapstructure:",squash"`
-	BootKeyInterval                 time.Duration       `mapstructure:"boot_key_interval" required:"false"`
+	BootKeyInterval                 time.Duration `mapstructure:"boot_key_interval" required:"false"`
+	shutdowncommand.ShutdownConfig  `mapstructure:",squash"`
 	KubernetesName                  string              `mapstructure:"kubernetes_name"`
 	KubernetesNamespace             string              `mapstructure:"kubernetes_namespace"`
 	KubernetesNodeSelectors         map[string]string   `mapstructure:"kubernetes_node_selectors"`
@@ -97,6 +99,7 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	if errs := b.config.BootConfig.Prepare(&interpolate.Context{}); len(errs) > 0 {
 		return nil, nil, &packer.MultiError{Errors: errs}
 	}
+	b.config.ShutdownConfig.Prepare(&interpolate.Context{})
 
 	warnings, err = prepareCommunicator(&b.config.Comm)
 	if err != nil {
@@ -223,6 +226,11 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		connectStep(&b.config.Comm),
 		&commonsteps.StepProvision{},
+		&stepDef.StepShutdownVM{
+			Clients:         b.clients,
+			ShutdownCommand: b.config.ShutdownCommand,
+			ShutdownTimeout: b.config.ShutdownTimeout,
+		},
 		&stepDef.StepExportVM{
 			Clients:         b.clients,
 			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,

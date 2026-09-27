@@ -83,8 +83,9 @@ func TestGenerateVirtualMachineRunStrategy(t *testing.T) {
 	if virtualMachine.Spec.Running != nil {
 		t.Errorf("expected the deprecated 'running' field to be left out, got: %v", *virtualMachine.Spec.Running)
 	}
-	if strategy := virtualMachine.Spec.RunStrategy; strategy == nil || *strategy != kubevirtv1.RunStrategyAlways {
-		t.Errorf("expected run strategy '%s', got: %v", kubevirtv1.RunStrategyAlways, strategy)
+	// a guest that shuts itself down, as Sysprep does, must not be started again
+	if strategy := virtualMachine.Spec.RunStrategy; strategy == nil || *strategy != kubevirtv1.RunStrategyOnce {
+		t.Errorf("expected run strategy '%s', got: %v", kubevirtv1.RunStrategyOnce, strategy)
 	}
 }
 

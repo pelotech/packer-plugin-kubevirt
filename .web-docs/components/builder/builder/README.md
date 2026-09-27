@@ -11,7 +11,7 @@ The ISO builder is mostly used to create base VM images, an ISO or a cloud image
 The builder runs against the Kubernetes cluster of your current kube context, with KubeVirt 1.9 or later and CDI installed.
 Once provisioned, the Virtual Machine is stopped, Linux disks are generalized with `virt-sysprep`
 (running as a Kubernetes job in the cluster, nothing to install locally) and the disk is exposed through a Virtual Machine Export.
-Windows is generalized by your last provisioner, see [Windows](#windows).
+Windows is generalized by your shutdown command, see [Windows](#windows).
 
 <!-- Builder Configuration Fields -->
 
@@ -84,6 +84,17 @@ Defaults to `100ms`
 
 - `boot_keygroup_interval` (duration string) - Time to wait between two items of `boot_command`
 Defaults to no wait
+
+**Shutdown fields**
+
+The builder stops the VM once the provisioners are done. A shutdown command lets the guest do it, when it has work to do on its way down.
+The VM runs once: a guest that shuts down is not started again.
+
+- `shutdown_command` (string) - Command run in the VM after the provisioners, that ends with the shutdown of the guest
+Defaults to no command, the builder stops the VM
+
+- `shutdown_timeout` (duration string) - Time to wait for the VM to be stopped after the shutdown command
+Defaults to `5m`
 
 **Communicator configuration fields**
 
@@ -188,14 +199,13 @@ source "kubevirt-iso" "windows" {
 
   communicator           = "winrm"
   winrm_timeout          = "10m"
+
+  shutdown_command       = "C:\\Windows\\System32\\Sysprep\\Sysprep.exe /generalize /oobe /shutdown /quiet"
+  shutdown_timeout       = "30m"
 }
 
 build {
   sources = ["source.kubevirt-iso.windows"]
-
-  provisioner "powershell" {
-    script = "/path/to/generalize.ps1"
-  }
 }
 ```
 
@@ -221,8 +231,7 @@ for a few seconds and gives up without a key. Type one every second for a while,
 **Readiness.** The VM is ready when its guest agent answers. Install it as the last command of your answer file
 (`E:\guest-agent\qemu-ga-x86_64.msi`), after WinRM is set up, so the provisioners start on a finished install.
 
-**Generalization.** Run Sysprep in your last provisioner, with `/generalize /oobe /quit`, and wait for it to end.
-Do not let it shut Windows down: KubeVirt would start the VM again and Windows would run its first boot during the build.
-The builder stops the VM itself.
+**Generalization.** Run Sysprep as the `shutdown_command`, with `/generalize /oobe /shutdown`. It cannot be a provisioner:
+Sysprep takes WinRM down while it runs, so Packer loses the connection before the end. The builder waits for the VM to be stopped.
 
 **Default answer file.** The one of the source code installs Windows 10 Pro on a BIOS machine. Bring your own for anything else.

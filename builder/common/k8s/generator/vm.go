@@ -180,7 +180,7 @@ func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMa
 }
 
 func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachine {
-	runStrategy := kubevirtv1.RunStrategyAlways
+	runStrategy := kubevirtv1.RunStrategyOnce
 	disks := generateDisks(opts.OsFamily)
 	volumes := generateVolumes(opts)
 	probeExecCommand := buildProbeExecCommand(opts.OsFamily)
