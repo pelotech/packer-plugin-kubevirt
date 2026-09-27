@@ -5,7 +5,7 @@ This repository contains the following sections:
   - [ISO builder](builder/iso)
 - Post-processors
   - [S3 Export](post-processor/s3)
-  - OCI Export _(to be implemented)_
+  - [OCI Export](post-processor/oci)
 - [Docs](docs)
 - [Example](example)
 
