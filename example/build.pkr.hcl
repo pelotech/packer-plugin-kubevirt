@@ -108,6 +108,7 @@ build {
   #   }
 
   post-processor "kubevirt-s3" {
+    name                  = "s3"
     s3_bucket             = var.destination_aws_s3_bucket
     s3_key_prefix         = var.destination_aws_s3_key_prefix
     s3_endpoint_url       = var.destination_s3_endpoint_url # Optional
@@ -119,6 +120,7 @@ build {
   }
 
   post-processor "kubevirt-oci" {
+    name              = "oci"
     image             = var.destination_oci_image
     registry_username = var.destination_oci_registry_username # Optional
     registry_password = var.destination_oci_registry_password # Optional
@@ -127,6 +129,7 @@ build {
   }
 
   post-processor "kubevirt-datasource" {
+    name            = "datasource"
     datasource_name = "base-ubuntu" # Optional, default to the Kubernetes name
   }
 }

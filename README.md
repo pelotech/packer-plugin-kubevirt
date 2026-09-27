@@ -138,7 +138,8 @@ go test ./...
 ```
 
 The integration test builds the [example](example) on a KinD cluster with KubeVirt and CDI, in the `test plugin` workflow.
-It runs on every push, or on demand:
+A push to a branch builds it once per export, side by side. A push to `main` builds it once with the three exports in a row.
+It also runs on demand, both ways:
 
 ```shell
 gh workflow run tests.yml --ref <branch>
