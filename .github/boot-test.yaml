@@ -19,7 +19,7 @@ spec:
         storage:
           resources:
             requests:
-              storage: 10Gi
+              storage: 4Gi
   template:
     spec:
       domain:

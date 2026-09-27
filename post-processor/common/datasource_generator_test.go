@@ -168,7 +168,7 @@ func TestValidateDataSourceOptions(t *testing.T) {
 		"namespace":             {Namespace: "images.linux"},
 		"volume_size":           {VolumeSize: "10 gigabytes"},
 		"storage_class":         {StorageClass: "Fast Storage"},
-		"default_preference":    {DefaultPreference: "ubuntu/22.04"},
+		"default_preference":    {DefaultPreference: "ubuntu/26.04"},
 		"default_instance_type": {DefaultInstanceType: strings.Repeat("u", 64)},
 	}
 	for field, opts := range invalid {

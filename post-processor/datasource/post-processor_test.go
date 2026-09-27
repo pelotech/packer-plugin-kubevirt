@@ -125,11 +125,11 @@ func TestPostProcessUsesBuilderValues(t *testing.T) {
 
 func TestPostProcessOverridesBuilderValues(t *testing.T) {
 	config := Config{
-		DataSourceName:      "ubuntu-22-04",
+		DataSourceName:      "ubuntu-26-04",
 		Namespace:           "images",
 		VolumeSize:          "20Gi",
 		StorageClass:        "fast",
-		DefaultPreference:   "ubuntu.22.04",
+		DefaultPreference:   "ubuntu.26.04",
 		DefaultInstanceType: "u1.medium",
 	}
 	p := newPostProcessor(config, cdiv1beta1.Succeeded, newExport())
@@ -140,7 +140,7 @@ func TestPostProcessOverridesBuilderValues(t *testing.T) {
 	}
 
 	dataVolume := findDataVolume(t, p, "images")
-	if !strings.HasPrefix(dataVolume.Name, "ubuntu-22-04-") {
+	if !strings.HasPrefix(dataVolume.Name, "ubuntu-26-04-") {
 		t.Errorf("expected a volume named after the Data Source, got: '%s'", dataVolume.Name)
 	}
 	if size := dataVolume.Spec.Storage.Resources.Requests[corev1.ResourceStorage]; size.String() != "20Gi" {
@@ -150,8 +150,8 @@ func TestPostProcessOverridesBuilderValues(t *testing.T) {
 		t.Errorf("expected storage class 'fast', got: %v", storageClass)
 	}
 
-	labels := findDataSource(t, p, "images", "ubuntu-22-04").Labels
-	if labels[instancetypeapi.DefaultPreferenceLabel] != "ubuntu.22.04" || labels[instancetypeapi.DefaultInstancetypeLabel] != "u1.medium" {
+	labels := findDataSource(t, p, "images", "ubuntu-26-04").Labels
+	if labels[instancetypeapi.DefaultPreferenceLabel] != "ubuntu.26.04" || labels[instancetypeapi.DefaultInstancetypeLabel] != "u1.medium" {
 		t.Errorf("expected the configured preference and instance type, got labels: %v", labels)
 	}
 }
@@ -278,7 +278,7 @@ func TestConfigureRejectsInvalidValues(t *testing.T) {
 		"namespace":             "images.linux",
 		"volume_size":           "10 gigabytes",
 		"storage_class":         "Fast Storage",
-		"default_preference":    "ubuntu/22.04",
+		"default_preference":    "ubuntu/26.04",
 		"default_instance_type": "u1/medium",
 	}
 	for field, value := range invalid {

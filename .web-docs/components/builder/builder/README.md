@@ -132,7 +132,7 @@ source "kubevirt-iso" "ubuntu" {
       effect   = "NoSchedule"
     }
   ]
-  source_url                  = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+  source_url                  = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
   kubevirt_os_preference      = "ubuntu"
   vm_disk_space               = "10Gi"
   # Optional fields

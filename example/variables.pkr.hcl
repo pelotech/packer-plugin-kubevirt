@@ -85,7 +85,7 @@ variable "destination_aws_region" {
 variable "destination_oci_image" {
   description = "Image reference, with a tag, the exported VM image is pushed to"
   type        = string
-  default     = "ghcr.io/pelotech/base-ubuntu:22.04"
+  default     = "ghcr.io/pelotech/base-ubuntu:26.04"
 }
 
 variable "destination_oci_registry_username" {

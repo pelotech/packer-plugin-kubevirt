@@ -58,9 +58,9 @@ COPY --from=ghcr.io/pelotech/packer-plugin-kubevirt:<version> / /root/.config/pa
 
 ```hcl
 source "kubevirt-iso" "ubuntu" {
-  kubernetes_name        = "base-ubuntu-2204"
+  kubernetes_name        = "base-ubuntu-2604"
   kubernetes_namespace   = "packer"
-  source_url             = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+  source_url             = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
   kubevirt_os_preference = "ubuntu"
   vm_disk_space          = "10Gi"
 }
@@ -93,7 +93,7 @@ This keeps the image in the cluster. To export it somewhere else as well, chain 
   }
 
   post-processor "kubevirt-oci" {
-    image             = "ghcr.io/pelotech/base-ubuntu:22.04"
+    image             = "ghcr.io/pelotech/base-ubuntu:26.04"
     registry_username = var.registry_username
     registry_password = var.registry_password
   }
