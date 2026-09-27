@@ -2,14 +2,11 @@
 # on a KinD cluster with KubeVirt and CDI. The image is uploaded to a Garage bucket as a qcow2 file, then read back
 # to check that it holds an installed and generalized Windows.
 #
-# The build takes about an hour, so it only runs when it is started by hand.
+# The build takes about 40 minutes, so it only runs when it is started by hand.
 name: test plugin with Windows
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feat/windows-uefi-builds
 
 concurrency:
   group: test-plugin-windows-${{ github.ref }}

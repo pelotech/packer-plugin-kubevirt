@@ -149,7 +149,7 @@ gh workflow run tests.yml --ref <branch>
 The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket, pushed to a registry and imported behind a DataSource, all in the cluster, so the test needs no account. A Virtual Machine is then started from the DataSource to check that the image boots.
 
 The `test plugin with Windows` workflow builds the [Windows 11 example](example/windows-11) from its install ISO, with UEFI, Secure Boot and a TPM.
-It takes about an hour, so it only runs on demand:
+It takes about 40 minutes, so it only runs on demand:
 
 ```shell
 gh workflow run tests-windows.yml --ref <branch>
