@@ -11,7 +11,9 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
+	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"strings"
 	"testing"
 	"time"
@@ -250,5 +252,132 @@ func TestWaitForJobCompletionReportsConditionsOfPendingPodsOnly(t *testing.T) {
 	err = WaitForJobCompletion(fake.NewSimpleClientset(job, failedPod), packersdk.TestUi(t), job, 50*time.Millisecond)
 	if err == nil || strings.Contains(err.Error(), unschedulable.Message) {
 		t.Errorf("expected error to leave out the conditions of a pod that ran, got: %v", err)
+	}
+}
+
+func newDataVolume(phase cdiv1beta1.DataVolumePhase) *cdiv1beta1.DataVolume {
+	return &cdiv1beta1.DataVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu-20260926153045", Namespace: "images"},
+		Status: cdiv1beta1.DataVolumeStatus{
+			Phase:        phase,
+			ClaimName:    "base-ubuntu-20260926153045",
+			RestartCount: 3,
+			Conditions: []cdiv1beta1.DataVolumeCondition{
+				{Type: cdiv1beta1.DataVolumeBound, Status: corev1.ConditionTrue, Reason: "Bound", Message: "PVC base-ubuntu-20260926153045 Bound"},
+				{Type: cdiv1beta1.DataVolumeRunning, Status: corev1.ConditionFalse, Reason: "Error", Message: "expected status code 200, got 401"},
+			},
+		},
+	}
+}
+
+func newImporterPod() *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "importer-base-ubuntu", Namespace: "images"},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{
+				{Name: "importer", State: corev1.ContainerState{
+					Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff", Message: "back-off restarting failed container"},
+				}},
+			},
+		},
+	}
+}
+
+func newClaim(name string, annotations map[string]string) *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "images", Annotations: annotations},
+	}
+}
+
+func TestWaitForDataVolumeImportSucceeds(t *testing.T) {
+	dataVolume := newDataVolume(cdiv1beta1.ImportInProgress)
+	cdiClient := cdifake.NewSimpleClientset(dataVolume)
+	watcher := watch.NewFake()
+	cdiClient.PrependWatchReactor("datavolumes", k8stesting.DefaultWatchReactor(watcher, nil))
+	go func() {
+		watcher.Add(dataVolume)
+		watcher.Modify(newDataVolume(cdiv1beta1.Succeeded))
+	}()
+
+	clients := &Clients{Kubernetes: fake.NewSimpleClientset(), CDI: cdiClient}
+	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
+	if err != nil {
+		t.Fatalf("expected the import to succeed, got: %v", err)
+	}
+}
+
+func TestWaitForDataVolumeImportFailureReportsImporterPod(t *testing.T) {
+	dataVolume := newDataVolume(cdiv1beta1.Failed)
+	cdiClient := cdifake.NewSimpleClientset(dataVolume)
+	watcher := watch.NewFake()
+	cdiClient.PrependWatchReactor("datavolumes", k8stesting.DefaultWatchReactor(watcher, nil))
+	go watcher.Modify(dataVolume)
+	pod := newImporterPod()
+	claim := newClaim(dataVolume.Name, map[string]string{"cdi.kubevirt.io/storage.import.importPodName": pod.Name})
+	kubeClient := fake.NewSimpleClientset(pod, claim)
+
+	clients := &Clients{Kubernetes: kubeClient, CDI: cdiClient}
+	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected a failure error")
+	}
+	for _, expected := range []string{"'Failed'", "3 restarts", "expected status code 200, got 401", pod.Name, "CrashLoopBackOff"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Errorf("expected error to contain %q, got: %v", expected, err)
+		}
+	}
+	if strings.Contains(err.Error(), "PVC base-ubuntu-20260926153045 Bound") {
+		t.Errorf("expected error to leave out the conditions which are met, got: %v", err)
+	}
+}
+
+func TestWaitForDataVolumeImportTimeoutReportsImporterPodOfPopulator(t *testing.T) {
+	dataVolume := newDataVolume(cdiv1beta1.ImportInProgress)
+	cdiClient := cdifake.NewSimpleClientset(dataVolume)
+	pod := newImporterPod()
+	claim := newClaim(dataVolume.Name, map[string]string{"cdi.kubevirt.io/storage.populator.pvcPrime": "prime-claim-uid"})
+	populatorClaim := newClaim("prime-claim-uid", map[string]string{"cdi.kubevirt.io/storage.import.importPodName": pod.Name})
+	kubeClient := fake.NewSimpleClientset(pod, claim, populatorClaim)
+
+	clients := &Clients{Kubernetes: kubeClient, CDI: cdiClient}
+	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected a timeout error")
+	}
+	for _, expected := range []string{"timeout", "'ImportInProgress'", "expected status code 200, got 401", pod.Name, "CrashLoopBackOff"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Errorf("expected error to contain %q, got: %v", expected, err)
+		}
+	}
+}
+
+func TestWaitForDataVolumeImportTimeoutWithoutImporterPod(t *testing.T) {
+	dataVolume := newDataVolume(cdiv1beta1.Pending)
+	dataVolume.Status.ClaimName = ""
+	clients := &Clients{Kubernetes: fake.NewSimpleClientset(), CDI: cdifake.NewSimpleClientset(dataVolume)}
+
+	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected a timeout error")
+	}
+	for _, expected := range []string{"timeout", "'Pending'", "no importer pod"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Errorf("expected error to contain %q, got: %v", expected, err)
+		}
+	}
+}
+
+func TestWaitForDataVolumeImportClosedWatch(t *testing.T) {
+	dataVolume := newDataVolume(cdiv1beta1.ImportInProgress)
+	cdiClient := cdifake.NewSimpleClientset(dataVolume)
+	watcher := watch.NewFake()
+	cdiClient.PrependWatchReactor("datavolumes", k8stesting.DefaultWatchReactor(watcher, nil))
+	watcher.Stop()
+
+	clients := &Clients{Kubernetes: fake.NewSimpleClientset(), CDI: cdiClient}
+	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected an error when the watch is closed before the import is done")
 	}
 }

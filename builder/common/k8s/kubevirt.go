@@ -5,6 +5,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"kubevirt.io/client-go/containerizeddataimporter"
 	"kubevirt.io/client-go/kubevirt"
 	"os"
 )
@@ -17,6 +18,7 @@ const (
 type Clients struct {
 	Kubernetes kubernetes.Interface
 	Kubevirt   kubevirt.Interface
+	CDI        containerizeddataimporter.Interface
 	RestConfig *restclient.Config
 }
 
@@ -52,6 +54,11 @@ func GetKubevirtClient() (*Clients, error) {
 		return nil, fmt.Errorf("failed to create kubevirt client: %w", err)
 	}
 
+	cdiClient, err := containerizeddataimporter.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CDI client: %w", err)
+	}
+
 	version, err := kubeClient.Discovery().ServerVersion()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve server version: %w", err)
@@ -59,5 +66,5 @@ func GetKubevirtClient() (*Clients, error) {
 		fmt.Printf("Server version: %s\n", version.String())
 	}
 
-	return &Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient, RestConfig: config}, nil
+	return &Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient, CDI: cdiClient, RestConfig: config}, nil
 }

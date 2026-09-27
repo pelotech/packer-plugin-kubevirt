@@ -19,6 +19,7 @@ import (
 	"k8s.io/utils/pointer"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	kvcorev1 "kubevirt.io/client-go/kubevirt/typed/core/v1"
+	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"log"
 	"net/http"
 	"os"
@@ -30,6 +31,9 @@ const (
 	PortFowardTimeout              = 5 * time.Second
 	VirtualMachineStopPollInterval = time.Second
 	ContainerLogsTailLines         = 10
+
+	importerPodAnnotation    = "cdi.kubevirt.io/storage.import.importPodName"
+	populatorClaimAnnotation = "cdi.kubevirt.io/storage.populator.pvcPrime"
 )
 
 func RunAsyncPortForward(clients *Clients, podName, namespace string, ports []string) (chan struct{}, error) {
@@ -153,20 +157,24 @@ func describeJobPods(client kubernetes.Interface, job *batchv1.Job) string {
 		return "no pod found for the job"
 	}
 
-	description := fmt.Sprintf("pod '%s' is '%s'", latestPod.Name, latestPod.Status.Phase)
-	for _, condition := range latestPod.Status.Conditions {
-		if latestPod.Status.Phase == corev1.PodPending && condition.Status == corev1.ConditionFalse && condition.Message != "" {
+	return describePod(client, latestPod)
+}
+
+func describePod(client kubernetes.Interface, pod *corev1.Pod) string {
+	description := fmt.Sprintf("pod '%s' is '%s'", pod.Name, pod.Status.Phase)
+	for _, condition := range pod.Status.Conditions {
+		if pod.Status.Phase == corev1.PodPending && condition.Status == corev1.ConditionFalse && condition.Message != "" {
 			description += fmt.Sprintf(", %s: %s", condition.Reason, condition.Message)
 		}
 	}
-	statuses := append(latestPod.Status.InitContainerStatuses, latestPod.Status.ContainerStatuses...)
+	statuses := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
 	for _, status := range statuses {
 		if waiting := status.State.Waiting; waiting != nil {
 			description += fmt.Sprintf(", container '%s' is waiting: %s %s", status.Name, waiting.Reason, waiting.Message)
 		}
 		if terminated := status.State.Terminated; terminated != nil && terminated.ExitCode != 0 {
 			description += fmt.Sprintf(", container '%s' terminated with exit code %d: %s %s", status.Name, terminated.ExitCode, terminated.Reason, terminated.Message)
-			description += fmt.Sprintf(", last logs: %s", readContainerLogs(client, latestPod, status.Name))
+			description += fmt.Sprintf(", last logs: %s", readContainerLogs(client, pod, status.Name))
 		}
 	}
 
@@ -198,4 +206,96 @@ func WaitForVirtualMachineStopped(client kvcorev1.VirtualMachineInterface, name 
 	}
 
 	return nil
+}
+
+func WaitForDataVolumeImport(clients *Clients, ui packersdk.Ui, dataVolume *cdiv1beta1.DataVolume, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
+	defer cancel()
+
+	watcher, err := clients.CDI.CdiV1beta1().DataVolumes(dataVolume.Namespace).Watch(ctx, metav1.ListOptions{
+		FieldSelector: labels.SelectorFromSet(map[string]string{
+			"metadata.name": dataVolume.Name,
+		}).String(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get Data Volume state %s/%s: %w", dataVolume.Namespace, dataVolume.Name, err)
+	}
+	defer watcher.Stop()
+
+	var progress string
+	for {
+		select {
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				if ctx.Err() != nil {
+					return fmt.Errorf("timeout waiting for Data Volume to be imported: %s", describeDataVolumeImport(clients, dataVolume))
+				}
+				return fmt.Errorf("watch closed before Data Volume was imported: %s", describeDataVolumeImport(clients, dataVolume))
+			}
+			updatedDataVolume, ok := event.Object.(*cdiv1beta1.DataVolume)
+			if !ok {
+				continue
+			}
+			status := updatedDataVolume.Status
+			updatedProgress := fmt.Sprintf("phase '%s', progress '%s'", status.Phase, status.Progress)
+			if status.Phase != cdiv1beta1.PhaseUnset && updatedProgress != progress {
+				progress = updatedProgress
+				ui.Message(progress)
+			}
+			if status.Phase == cdiv1beta1.Succeeded {
+				return nil
+			} else if status.Phase == cdiv1beta1.Failed {
+				return fmt.Errorf("import of Data Volume failed: %s", describeDataVolumeImport(clients, dataVolume))
+			}
+
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for Data Volume to be imported: %s", describeDataVolumeImport(clients, dataVolume))
+		}
+	}
+}
+
+func describeDataVolumeImport(clients *Clients, dataVolume *cdiv1beta1.DataVolume) string {
+	dataVolume, err := clients.CDI.CdiV1beta1().DataVolumes(dataVolume.Namespace).Get(context.Background(), dataVolume.Name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Sprintf("failed to get Data Volume: %s", err)
+	}
+
+	description := fmt.Sprintf("Data Volume '%s' is '%s' after %d restarts", dataVolume.Name, dataVolume.Status.Phase, dataVolume.Status.RestartCount)
+	for _, condition := range dataVolume.Status.Conditions {
+		if condition.Status != corev1.ConditionTrue && condition.Message != "" {
+			description += fmt.Sprintf(", %s: %s", condition.Reason, condition.Message)
+		}
+	}
+
+	return fmt.Sprintf("%s, %s", description, describeImporterPod(clients.Kubernetes, dataVolume))
+}
+
+func describeImporterPod(client kubernetes.Interface, dataVolume *cdiv1beta1.DataVolume) string {
+	if dataVolume.Status.ClaimName == "" {
+		return "no importer pod, the volume is not claimed yet"
+	}
+
+	claims := client.CoreV1().PersistentVolumeClaims(dataVolume.Namespace)
+	claim, err := claims.Get(context.Background(), dataVolume.Status.ClaimName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Sprintf("failed to find the importer pod: %s", err)
+	}
+	if populatorClaimName, found := claim.Annotations[populatorClaimAnnotation]; found {
+		// with a CSI storage class, the importer pod fills a temporary claim
+		claim, err = claims.Get(context.Background(), populatorClaimName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Sprintf("failed to find the importer pod: %s", err)
+		}
+	}
+
+	podName, found := claim.Annotations[importerPodAnnotation]
+	if !found {
+		return "no importer pod yet"
+	}
+	pod, err := client.CoreV1().Pods(claim.Namespace).Get(context.Background(), podName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Sprintf("failed to get the importer pod: %s", err)
+	}
+
+	return describePod(client, pod)
 }

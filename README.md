@@ -6,6 +6,7 @@ This repository contains the following sections:
 - Post-processors
   - [S3 Export](post-processor/s3)
   - OCI Export _(to be implemented)_
+  - [DataSource Export](post-processor/datasource)
 - [Docs](docs)
 - [Example](example)
 
