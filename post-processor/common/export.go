@@ -14,7 +14,7 @@ func DeleteOrKeepExport(clients *k8s.Clients, ui packersdk.Ui, namespace, name s
 		return
 	}
 
-	err := clients.Kubevirt.ExportV1beta1().VirtualMachineExports(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := clients.Kubevirt.ExportV1().VirtualMachineExports(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err == nil {
 		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", namespace, name))
 	} else {

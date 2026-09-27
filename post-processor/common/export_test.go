@@ -23,7 +23,7 @@ func TestDeleteOrKeepExport(t *testing.T) {
 
 			DeleteOrKeepExport(clients, packersdk.TestUi(t), export.Namespace, export.Name, test.keep)
 
-			exports, err := clients.Kubevirt.ExportV1beta1().VirtualMachineExports(export.Namespace).List(context.Background(), metav1.ListOptions{})
+			exports, err := clients.Kubevirt.ExportV1().VirtualMachineExports(export.Namespace).List(context.Background(), metav1.ListOptions{})
 			if err != nil {
 				t.Fatalf("failed to list Virtual Machine Exports: %v", err)
 			}

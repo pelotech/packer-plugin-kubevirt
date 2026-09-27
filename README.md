@@ -27,7 +27,7 @@ Linux builds are covered by the integration test. Windows builds are not.
 
 ## Requirements
 
-- A Kubernetes cluster with [KubeVirt](https://kubevirt.io/user-guide/cluster_admin/installation/) and [CDI](https://github.com/kubevirt/containerized-data-importer), and nodes with KVM
+- A Kubernetes cluster with [KubeVirt](https://kubevirt.io/user-guide/cluster_admin/installation/) 1.9 or later and [CDI](https://github.com/kubevirt/containerized-data-importer), and nodes with KVM
 - The [preferences](https://github.com/kubevirt/common-instancetypes) you refer to with `kubevirt_os_preference`
 - A kubeconfig for that cluster. The plugin uses your current context, or the service account of its pod when Packer runs in the cluster
 - Packer. The integration test runs with Packer 1.16.1

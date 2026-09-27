@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
-	exportv1 "kubevirt.io/api/export/v1beta1"
+	exportv1 "kubevirt.io/api/export/v1"
 	instancetypeapi "kubevirt.io/api/instancetype"
 	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
@@ -206,7 +206,7 @@ func TestPostProcessRemovesImportResources(t *testing.T) {
 	if len(secrets.Items) != 0 || len(configMaps.Items) != 0 {
 		t.Errorf("expected the export token and certificate to be removed, got secrets: %v, config maps: %v", secrets.Items, configMaps.Items)
 	}
-	_, err = p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports("packer").Get(context.Background(), "base-ubuntu", metav1.GetOptions{})
+	_, err = p.clients.Kubevirt.ExportV1().VirtualMachineExports("packer").Get(context.Background(), "base-ubuntu", metav1.GetOptions{})
 	if !k8serrors.IsNotFound(err) {
 		t.Errorf("expected the Virtual Machine Export to be deleted, got: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestPostProcessKeepsExport(t *testing.T) {
 		t.Fatalf("expected the post-processor to succeed, got: %v", err)
 	}
 
-	_, err = p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports("packer").Get(context.Background(), "base-ubuntu", metav1.GetOptions{})
+	_, err = p.clients.Kubevirt.ExportV1().VirtualMachineExports("packer").Get(context.Background(), "base-ubuntu", metav1.GetOptions{})
 	if err != nil {
 		t.Errorf("expected the Virtual Machine Export to be kept, got: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestPostProcessFailedImportLeavesDataSourceUntouched(t *testing.T) {
 	if len(dataVolumes.Items) != 0 {
 		t.Errorf("expected the volume of the failed import to be deleted, got: %v", dataVolumes.Items)
 	}
-	_, err = p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports("packer").Get(context.Background(), "base-ubuntu", metav1.GetOptions{})
+	_, err = p.clients.Kubevirt.ExportV1().VirtualMachineExports("packer").Get(context.Background(), "base-ubuntu", metav1.GetOptions{})
 	if !k8serrors.IsNotFound(err) {
 		t.Errorf("expected the Virtual Machine Export to be deleted, got: %v", err)
 	}

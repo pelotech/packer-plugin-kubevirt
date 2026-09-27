@@ -96,7 +96,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	name := source.State(buildercommon.VirtualMachineExportNameArtifactKey).(string)
 	token := source.State(buildercommon.VirtualMachineExportTokenArtifactKey).(string)
 
-	export, err := p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	export, err := p.clients.Kubevirt.ExportV1().VirtualMachineExports(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
 	}

@@ -2,7 +2,7 @@ package common
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	exportv1 "kubevirt.io/api/export/v1beta1"
+	exportv1 "kubevirt.io/api/export/v1"
 	"strings"
 	"testing"
 )
@@ -10,6 +10,18 @@ import (
 func newExport() *exportv1.VirtualMachineExport {
 	return &exportv1.VirtualMachineExport{
 		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+	}
+}
+
+func TestGenerateS3UploaderJobIsOwnedByExport(t *testing.T) {
+	export := newExport()
+	export.UID = "export-uid"
+
+	job := GenerateS3UploaderJob(export, S3UploaderOptions{Name: "base-ubuntu", Namespace: "packer"})
+
+	owner := metav1.GetControllerOf(job)
+	if owner == nil || owner.APIVersion != "export.kubevirt.io/v1" || owner.Kind != "VirtualMachineExport" || owner.UID != export.UID {
+		t.Errorf("expected the job to be owned by the 'v1' export, got: %v", job.OwnerReferences)
 	}
 }
 

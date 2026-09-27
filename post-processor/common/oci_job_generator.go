@@ -7,7 +7,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	exportv1 "kubevirt.io/api/export/v1beta1"
+	exportv1 "kubevirt.io/api/export/v1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"path"
 	"strings"
