@@ -8,6 +8,9 @@
   "pre-commit": {
     enabled: true,
   },
+  kubernetes: {
+    managerFilePatterns: ["/^\\.github/garage\\.yaml$/"],
+  },
   customManagers: [
     {
       // container images of the jobs created by the plugin
