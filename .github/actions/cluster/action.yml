@@ -1,7 +1,7 @@
 name: KubeVirt cluster
 description: >
-  A KinD cluster with KVM, KubeVirt at the version of virtctl in mise.toml, CDI, and the preferences
-  of common-instancetypes. The tools of mise.toml must be installed first.
+  A KinD cluster with KVM, KubeVirt and CDI at the versions of mise.toml, and the preferences
+  of common-instancetypes. The tools and the environment of mise.toml must be set up first.
 runs:
   using: composite
   steps:
@@ -21,9 +21,6 @@ runs:
 
     - name: kubevirt and cdi install
       shell: bash
-      env:
-        # the importer image of post-processor/common/job_generator.go has the same version
-        CDI_VERSION: v1.66.1
       run: |
         kubevirt_version="v$(mise current github:kubevirt/kubevirt)"
         kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${kubevirt_version}/kubevirt-operator.yaml"

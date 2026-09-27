@@ -147,7 +147,7 @@ go test ./...
 ```
 
 The integration test builds the [Ubuntu example](example/ubuntu-26.04) on a KinD cluster with KubeVirt and CDI, in the `test plugin` workflow.
-KubeVirt has the version of `virtctl` in `mise.toml`, CDI the one of the [cluster action](.github/actions/cluster/action.yml).
+KubeVirt and CDI have the versions of `mise.toml`.
 A push to a branch builds it once per export, side by side. A push to `main` builds it once with the three exports in a row.
 It also runs on demand, both ways:
 

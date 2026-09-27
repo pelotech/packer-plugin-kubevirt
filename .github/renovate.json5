@@ -39,8 +39,8 @@
     },
     {
       customType: "regex",
-      managerFilePatterns: ["/^\\.github/actions/cluster/action\\.yml$/"],
-      matchStrings: ["CDI_VERSION: (?<currentValue>v[0-9.]+)"],
+      managerFilePatterns: ["/^mise\\.toml$/"],
+      matchStrings: ["CDI_VERSION = \"(?<currentValue>v[0-9.]+)\""],
       depNameTemplate: "kubevirt/containerized-data-importer",
       datasourceTemplate: "github-releases",
     },

@@ -12,3 +12,7 @@ aws-cli = "2.36.49"
 jq = "1.8.2"
 # virtctl, and the version of KubeVirt the tests install
 "github:kubevirt/kubevirt" = { version = "1.9.0", version_prefix = "v", matching = "virtctl", rename_exe = "virtctl" }
+
+[env]
+# the CDI the tests install, and the importer image of post-processor/common/job_generator.go
+CDI_VERSION = "v1.66.1"
