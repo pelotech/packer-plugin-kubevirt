@@ -96,7 +96,8 @@ jobs:
           grep --quiet ntfs filesystems.txt
 
           sudo --preserve-env=LIBGUESTFS_BACKEND virt-inspector --add "${image}" | tee inspection.xml | grep --extended-regexp '<(name|product_name|osinfo|major_version)>'
-          grep --quiet '<name>windows</name>' inspection.xml
+          # the product name in the registry of Windows 11 still says Windows 10, libguestfs tells them apart by build
+          grep --quiet '<osinfo>win11</osinfo>' inspection.xml
 
           state="$(sudo --preserve-env=LIBGUESTFS_BACKEND virt-win-reg "${image}" 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State' ImageState)"
           echo "image state: ${state}"

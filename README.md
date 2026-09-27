@@ -140,25 +140,33 @@ make generate
 
 ### Tests
 
+| What | When | Workflow | Time |
+|---|---|---|---|
+| Hooks: formatting, `go mod tidy`, gitleaks, actionlint, `packer fmt` | pull requests and pushes to `main` | `pre-commit`, with prek | about 1 min |
+| Ubuntu example, one job per export, side by side | every push to a branch | `test plugin` | about 8 min |
+| Ubuntu example, one job with the three exports in a row | every push to `main` | `test plugin` | about 10 min |
+| Windows 11 example | by hand | `test plugin with Windows` | about 35 min |
+| Unit tests | locally, and before each release | GoReleaser `before` hook | about 1 min |
+
 Unit tests:
 
 ```shell
 go test ./...
 ```
 
-The integration test builds the [Ubuntu example](example/ubuntu-26.04) on a KinD cluster with KubeVirt and CDI, in the `test plugin` workflow.
-KubeVirt and CDI have the versions of `mise.toml`.
-A push to a branch builds it once per export, side by side. A push to `main` builds it once with the three exports in a row.
-It also runs on demand, both ways:
+**Ubuntu example.** Each job builds the [Ubuntu example](example/ubuntu-26.04) on a KinD cluster with KubeVirt and CDI, at the versions of `mise.toml`, and provisions it with Ansible.
+On a branch, three jobs run side by side, each with one post-processor, so a failure points to its export.
+On `main`, one job runs the three post-processors in a row with `keep_export`, the way a user chains them.
+The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket, pushed to a registry and imported behind a DataSource, all in the cluster, so the test needs no account.
+The DataSource job then starts a Virtual Machine from it, to check that the image boots.
+A run by hand does both the side by side and the in a row jobs:
 
 ```shell
 gh workflow run tests.yml --ref <branch>
 ```
 
-The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket, pushed to a registry and imported behind a DataSource, all in the cluster, so the test needs no account. A Virtual Machine is then started from the DataSource to check that the image boots.
-
-The `test plugin with Windows` workflow builds the [Windows 11 example](example/windows-11) from its install ISO, with UEFI, Secure Boot and a TPM.
-It takes about 40 minutes, so it only runs on demand:
+**Windows 11 example.** It builds the [Windows 11 example](example/windows-11) from its install ISO, with UEFI, Secure Boot and a TPM, uploads it to Garage as `qcow2`,
+and checks with libguestfs that the image holds a generalized Windows 11. On failure it keeps the disk and prints the logs of Sysprep. It only runs by hand:
 
 ```shell
 gh workflow run tests-windows.yml --ref <branch>
