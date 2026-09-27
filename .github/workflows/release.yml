@@ -1,5 +1,6 @@
-# This GitHub action can publish assets for release when a tag is created.
-# Currently its setup to run on any tag that matches the pattern "v*" (i.e., v0.1.0).
+# On a push to main, release-please keeps the release pull request up to date,
+# and creates the tag and the release when that pull request is merged.
+# GoReleaser then publishes the assets. It also runs for a tag "v*" pushed by hand.
 #
 # This uses an action (hashicorp/ghaction-import-gpg) that assumes you set your
 # private key in the `GPG_PRIVATE_KEY` secret and passphrase in the `GPG_PASSPHRASE`
@@ -12,6 +13,8 @@
 name: release
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -20,19 +23,38 @@ permissions:
   packages: write
 
 jobs:
+  release-please:
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+      # to create the labels of the release pull request
+      issues: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v5
+
   go-releaser:
-    runs-on: ubuntu-latest
+    needs: release-please
+    # release-please is skipped for a tag pushed by hand
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.ref_type == 'tag') }}
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name || github.ref }}
 
       - name: Unshallow
         run: git fetch --prune --unshallow
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: 'go.mod'
+      - name: Set up the tools
+        uses: jdx/mise-action@v4
 
       - name: Describe plugin
         id: plugin_describe
@@ -56,10 +78,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run go-releaser
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          version: "~> v2"
-          args: release --clean
+        run: goreleaser release --clean
         env:
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

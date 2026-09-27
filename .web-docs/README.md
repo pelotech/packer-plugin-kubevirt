@@ -11,6 +11,7 @@
 
 To install this plugin, copy and paste this code into your Packer configuration, then run [`packer init`](https://www.packer.io/docs/commands/init).
 
+<!-- x-release-please-start-version -->
 ```hcl
 packer {
   required_plugins {
@@ -22,6 +23,7 @@ packer {
   }
 }
 ```
+<!-- x-release-please-end -->
 
 Alternatively, you can use `packer plugins install` to manage installation of this plugin.
 

@@ -1,7 +1,7 @@
 packer {
   required_plugins {
     kubevirt = {
-      version = ">= 0.1.0"
+      version = ">= 0.1.0" # x-release-please-version
       source  = "github.com/pelotech/kubevirt"
     }
     ansible = {

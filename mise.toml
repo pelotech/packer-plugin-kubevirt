@@ -1,7 +1,8 @@
-# Tools of the integration test and of the hooks, at the versions CI uses: run `mise install`
+# Tools of CI, at the versions it uses: run `mise install`
 [tools]
 go = "1.27.1"
 packer = "1.16.1"
 kind = "0.33.0"
 kubectl = "1.37.1"
 prek = "0.5.3"
+goreleaser = "2.18.2"
