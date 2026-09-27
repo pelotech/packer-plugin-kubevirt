@@ -27,23 +27,22 @@ packer plugins install --path ./packer-plugin-kubevirt "github.com/pelotech/kube
 PACKER_LOG=1 packer build -debug ./example
 ```
 
-## Running Acceptance Tests
+## Tests
 
-Make sure to build and setup the binary with:
+Unit tests:
 
-```sh
-# Build
-go build .
-# Move binary
-cp packer-plugin-kubevirt ~/.packer.d/plugins/packer-plugin-kubevirt # Option 1
-packer plugins install --path packer-plugin-kubevirt "github.com/pelotech/kubevirt" # Option 2
+```shell
+go test ./...
 ```
 
-Once everything required is set up, run:
+The integration test builds the [example](example) on a KinD cluster with KubeVirt and CDI, in the `test plugin` workflow.
+It runs when a pull request is approved, or on demand:
+
+```shell
+gh workflow run tests.yml --ref <branch>
 ```
-PACKER_ACC=1 go test -count 1 -v ./... -timeout=120m
-```
-This will run unit tests for all plugins in this set.
+
+A push only runs `packer init` and `packer validate`.
 
 ## Pipeline
 - integration tests (packer running against KinD cluster)
