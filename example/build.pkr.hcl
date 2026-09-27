@@ -115,5 +115,13 @@ build {
     aws_access_key_id     = var.destination_aws_access_key_id
     aws_secret_access_key = var.destination_aws_secret_access_key
     upload_timeout        = "10m" # Optional
+    keep_export           = true  # Optional, the next post-processor uses the export too
+  }
+
+  post-processor "kubevirt-oci" {
+    image             = var.destination_oci_image
+    registry_username = var.destination_oci_registry_username # Optional
+    registry_password = var.destination_oci_registry_password # Optional
+    registry_insecure = var.destination_oci_registry_insecure # Optional
   }
 }

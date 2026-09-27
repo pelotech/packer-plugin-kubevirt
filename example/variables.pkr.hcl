@@ -81,3 +81,29 @@ variable "destination_aws_region" {
   description = "AWS region used to initialize the AWS CLI uploading the exported VM image"
   type        = string
 }
+
+variable "destination_oci_image" {
+  description = "Image reference, with a tag, the exported VM image is pushed to"
+  type        = string
+  default     = "ghcr.io/pelotech/base-ubuntu:22.04"
+}
+
+variable "destination_oci_registry_username" {
+  description = "User name of the registry (Empty with the password pushes without credentials)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "destination_oci_registry_password" {
+  description = "Password of the registry (Empty with the user name pushes without credentials)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "destination_oci_registry_insecure" {
+  description = "Allow a registry served over plain HTTP"
+  type        = bool
+  default     = false
+}

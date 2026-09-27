@@ -1,0 +1,44 @@
+# Registry of the integration test, the OCI export pushes the image to it.
+# The namespace is created by the workflow.
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: registry
+      namespace: registry
+    spec:
+      selector:
+        matchLabels:
+          app: registry
+      template:
+        metadata:
+          labels:
+            app: registry
+        spec:
+          containers:
+            - name: registry
+              image: registry:3.1.0
+              ports:
+                - containerPort: 5000
+              readinessProbe:
+                httpGet:
+                  path: /v2/
+                  port: 5000
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/registry
+          volumes:
+            - name: data
+              emptyDir: {}
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: registry
+      namespace: registry
+    spec:
+      selector:
+        app: registry
+      ports:
+        - port: 5000
