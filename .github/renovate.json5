@@ -3,7 +3,38 @@
     "config:recommended",
   ],
   dependencyDashboard: true,
+  minimumReleaseAge: "7 days",
   postUpdateOptions: ["gomodTidy"],
+  "pre-commit": {
+    enabled: true,
+  },
+  customManagers: [
+    {
+      // container images of the jobs created by the plugin
+      customType: "regex",
+      managerFilePatterns: ["/\\.go$/"],
+      matchStrings: [
+        "\"(?<depName>[a-z0-9.-]+(?:/[a-z0-9._-]+)+):(?<currentValue>v?\\d+\\.\\d+\\.\\d+)\"",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/tests\\.yml$/"],
+      matchStrings: ["PRODUCT_VERSION: \"(?<currentValue>[^\"]+)\""],
+      depNameTemplate: "hashicorp/packer",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/tests\\.yml$/"],
+      matchStrings: [
+        "github\\.com/(?<depName>kubevirt/common-instancetypes)/[^?\\s]+\\?ref=(?<currentValue>v[0-9.]+)",
+      ],
+      datasourceTemplate: "github-releases",
+    },
+  ],
   packageRules: [
     {
       // kubevirt.io/client-go v1.9 only builds against Kubernetes 0.34
