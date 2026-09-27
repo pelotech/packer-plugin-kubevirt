@@ -19,16 +19,6 @@ locals {
         export_timeout     = "10m"
       }
     ]
-    windows = [
-      {
-        name               = "base-windows-10"
-        os_distribution    = "windows.10.virtio"
-        url                = "https://software.download.prss.microsoft.com/dbazure/Win10_22H2_English_x64v1.iso"
-        disk_space         = "15Gi"
-        deployment_timeout = "20m"
-        export_timeout     = "15m"
-      }
-    ]
   }
 }
 
@@ -61,41 +51,9 @@ source "kubevirt-iso" "linux" {
   ssh_port                     = 2222                             # Optional, default to a free local port
 }
 
-source "kubevirt-iso" "windows" {
-  kubernetes_name      = local.images.windows.0.name
-  kubernetes_namespace = "${var.kubernetes_namespace}-windows"
-  kubernetes_node_selectors = {
-    "kubevirt.io/schedulable" = "true"
-  }
-  kubernetes_tolerations = [
-    {
-      key      = "pelo.tech/kvm"
-      operator = "Equal"
-      value    = "true"
-      effect   = "NoSchedule"
-    }
-  ]
-  kubevirt_os_preference       = local.images.windows.0.os_distribution
-  vm_disk_space                = local.images.windows.0.disk_space
-  vm_cpu                       = var.vm_cpu
-  vm_memory                    = var.vm_memory
-  vm_windows_sysprep           = file("${path.root}/../builder/common/k8s/generator/scripts/autounattend.xml")
-  vm_deployment_timeout        = local.images.windows.0.deployment_timeout
-  vm_export_timeout            = local.images.windows.0.export_timeout
-  source_url                   = local.images.windows.0.url
-  source_aws_access_key_id     = var.source_aws_access_key_id
-  source_aws_secret_access_key = var.source_aws_secret_access_key
-  communicator                 = "winrm"
-  winrm_port                   = 5985
-  winrm_use_ssl                = false
-  winrm_insecure               = true
-  winrm_timeout                = "30s"
-}
-
 build {
   sources = [
-    "source.kubevirt-iso.linux",
-    # "source.kubevirt-iso.windows"
+    "source.kubevirt-iso.linux"
   ]
 
   #   provisioner "ansible" {

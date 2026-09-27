@@ -29,10 +29,10 @@ jobs:
       matrix:
         export: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["s3", "oci", "datasource", "all"]' || github.ref == 'refs/heads/main' && '["all"]' || '["s3", "oci", "datasource"]') }}
     env:
-      working-directory: ./example
+      working-directory: ./example/ubuntu-26.04
       # post-processors of the example this leg does not run, by name
       PACKER_EXCEPT: ${{ matrix.export == 's3' && 'oci,datasource' || matrix.export == 'oci' && 's3,datasource' || matrix.export == 'datasource' && 's3,oci' || '' }}
-      # bucket of example/values.auto.pkrvars.hcl
+      # bucket of example/ubuntu-26.04/values.auto.pkrvars.hcl
       S3_BUCKET: pelotech-vm-images
       # the upload runs in a pod, it reaches Garage through its service
       PKR_VAR_destination_s3_endpoint_url: "http://garage.garage.svc.cluster.local:3900"
@@ -175,7 +175,7 @@ jobs:
       - name: packer init
         working-directory: ${{ env.working-directory }}
         run: |
-          packer plugins install --path ../packer-plugin-kubevirt "github.com/pelotech/kubevirt"
+          packer plugins install --path ../../packer-plugin-kubevirt "github.com/pelotech/kubevirt"
           packer init .
 
       - name: packer validate
