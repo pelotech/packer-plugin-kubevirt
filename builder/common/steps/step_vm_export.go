@@ -141,17 +141,29 @@ func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.Virtual
 	ctx, cancel := context.WithTimeout(context.TODO(), s.VmExportTimeOut)
 	defer cancel()
 
-	watcher, _ := s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(export.Namespace).Watch(ctx, metav1.ListOptions{
+	watcher, err := s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(export.Namespace).Watch(ctx, metav1.ListOptions{
 		FieldSelector: labels.SelectorFromSet(map[string]string{
 			"metadata.name": export.Name,
 		}).String(),
 	})
+	if err != nil {
+		return fmt.Errorf("failed to get Virtual Machine Export state: %w", err)
+	}
 	defer watcher.Stop()
 
 	for {
 		select {
-		case event, _ := <-watcher.ResultChan():
-			updatedExport, _ := event.Object.(*exportv1.VirtualMachineExport)
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				if ctx.Err() != nil {
+					return fmt.Errorf("timeout waiting for Virtual Machine Export to be ready")
+				}
+				return fmt.Errorf("watch closed before Virtual Machine Export was ready")
+			}
+			updatedExport, ok := event.Object.(*exportv1.VirtualMachineExport)
+			if !ok || updatedExport.Status == nil {
+				continue
+			}
 			ui.Message(fmt.Sprintf("phase '%s'", updatedExport.Status.Phase))
 			if updatedExport.Status.Phase == exportv1.Ready {
 				return nil
