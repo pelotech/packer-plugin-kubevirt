@@ -202,9 +202,12 @@ jobs:
           sudo apt-get update > /dev/null
           sudo apt-get install --yes libguestfs-tools ntfs-3g > /dev/null
           export LIBGUESTFS_BACKEND=direct
-          sudo --preserve-env=LIBGUESTFS_BACKEND virt-ls --add "${disk}" --long /Windows/System32/Sysprep/Panther || true
+          guest() { sudo --preserve-env=LIBGUESTFS_BACKEND "$@"; }
+          guest virt-filesystems --add "${disk}" --all --long --human-readable || true
+          # the third partition of the answer file, in case the disk is not recognized as Windows
+          guest virt-ls --add "${disk}" --long /Windows/System32/Sysprep/Panther || guest virt-ls --add "${disk}" --mount /dev/sda3 --long /Windows/System32/Sysprep/Panther || true
           for file in /Windows/Setup/State/State.ini /Windows/System32/Sysprep/Panther/setuperr.log /Windows/System32/Sysprep/Panther/setupact.log /Windows/Panther/setuperr.log; do
             echo "::group::${file}"
-            sudo --preserve-env=LIBGUESTFS_BACKEND virt-cat --add "${disk}" "${file}" | tail -n 150 || true
+            { guest virt-cat --add "${disk}" "${file}" || guest virt-cat --add "${disk}" --mount /dev/sda3 "${file}"; } | tail -n 150 || true
             echo "::endgroup::"
           done
