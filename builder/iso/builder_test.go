@@ -221,6 +221,55 @@ func TestPrepareCommunicatorValidatesSettings(t *testing.T) {
 	}
 }
 
+func TestPrepareCommunicatorLocalPort(t *testing.T) {
+	tests := map[string]struct {
+		comm     communicator.Config
+		expected int
+	}{
+		"ssh port left to the port forwarding": {
+			comm:     communicator.Config{Type: "ssh"},
+			expected: 0,
+		},
+		"winrm port left to the port forwarding": {
+			comm:     communicator.Config{Type: "winrm"},
+			expected: 0,
+		},
+		"ssh port of the user": {
+			comm:     communicator.Config{Type: "ssh", SSH: communicator.SSH{SSHPort: 2200}},
+			expected: 2200,
+		},
+		"winrm port of the user": {
+			comm:     communicator.Config{Type: "winrm", WinRM: communicator.WinRM{WinRMPort: 5900}},
+			expected: 5900,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := prepareCommunicator(&test.comm); err != nil {
+				t.Fatalf("expected the communicator settings to be valid, got: %v", err)
+			}
+			if actual := test.comm.Port(); actual != test.expected {
+				t.Errorf("expected local port %d, got: %d", test.expected, actual)
+			}
+		})
+	}
+}
+
+func TestPrepareCommunicatorRejectsReservedPort(t *testing.T) {
+	tests := map[string]communicator.Config{
+		"ssh":   {Type: "ssh", SSH: communicator.SSH{SSHPort: 1023}},
+		"winrm": {Type: "winrm", WinRM: communicator.WinRM{WinRMPort: 1023}},
+	}
+	for name, comm := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := prepareCommunicator(&comm)
+			if err == nil || !strings.Contains(err.Error(), "reserved") {
+				t.Errorf("expected a reserved port error, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestPrepareCommunicatorKeepsWinRMTimeout(t *testing.T) {
 	comm := communicator.Config{Type: "winrm"}
 	if _, err := prepareCommunicator(&comm); err != nil {

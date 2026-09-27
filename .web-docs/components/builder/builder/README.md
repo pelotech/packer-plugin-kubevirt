@@ -89,7 +89,7 @@ Defaults to no key
 Defaults to `5m`
 
 - `ssh_port` (int) - Local port forwarded to the VM SSH port
-Accepted value: `>=1024` - Defaults to `2222`
+Accepted value: `>=1024` - Defaults to a free local port
 
 - `winrm_username` (string) - User name to connect to the VM with WinRM
 Defaults to `packer`, the user of the default answer file, when `winrm_username` and `winrm_password` are both unset
@@ -98,7 +98,7 @@ Defaults to `packer`, the user of the default answer file, when `winrm_username`
 Sensitive field - Defaults to `packer` when `winrm_username` and `winrm_password` are both unset
 
 - `winrm_port` (int) - Local port forwarded to the VM WinRM port
-Accepted value: `>=1024` - Defaults to `5389`
+Accepted value: `>=1024` - Defaults to a free local port
 
 - `winrm_use_ssl` (bool) - Use HTTPS for WinRM
 Defaults to `false`
@@ -145,7 +145,7 @@ source "kubevirt-iso" "ubuntu" {
   source_aws_secret_access_key = var.source_aws_secret_access_key # default to ""
 
   communicator                 = "ssh"                            # default to 'ssh'
-  ssh_port                     = 2222                             # default to 2222
+  ssh_port                     = 2222                             # default to a free local port
 }
 
  build {
@@ -167,7 +167,7 @@ source "kubevirt-iso" "windows" {
   vm_export_timeout      = "15m"                             # default to '5m'
 
   communicator           = "winrm"
-  winrm_port             = 5985                              # default to 5389
+  winrm_port             = 5985                              # default to a free local port
   winrm_use_ssl          = false                             # default to false
   winrm_insecure         = true                              # default to false
   winrm_timeout          = "30s"                             # default to '30s'

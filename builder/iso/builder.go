@@ -113,17 +113,11 @@ func prepareCommunicator(comm *communicator.Config) (warnings []string, err erro
 	}
 	switch comm.Type {
 	case "ssh":
-		if comm.SSHPort == 0 {
-			comm.SSHPort = 2222
-		}
 		if comm.SSHUsername == "" && comm.SSHPassword == "" {
 			comm.SSHUsername = buildercommon.VirtualMachineUsername
 			comm.SSHPassword = buildercommon.VirtualMachinePassword
 		}
 	case "winrm":
-		if comm.WinRMPort == 0 {
-			comm.WinRMPort = 5389
-		}
 		if comm.WinRMUser == "" && comm.WinRMPassword == "" {
 			comm.WinRMUser = buildercommon.VirtualMachineUsername
 			comm.WinRMPassword = buildercommon.VirtualMachinePassword
@@ -137,9 +131,12 @@ func prepareCommunicator(comm *communicator.Config) (warnings []string, err erro
 	if comm.WinRMTimeout == 0 {
 		comm.WinRMTimeout = 30 * time.Second
 	}
+	localSSHPort, localWinRMPort := comm.SSHPort, comm.WinRMPort
 	if errs := comm.Prepare(nil); len(errs) > 0 {
 		return nil, &packer.MultiError{Errors: errs}
 	}
+	// Prepare sets the ports left unset to 22 and 5985, while a free local port is wanted
+	comm.SSHPort, comm.WinRMPort = localSSHPort, localWinRMPort
 
 	return warnings, nil
 }
@@ -151,12 +148,6 @@ func connectStep(comm *communicator.Config) *communicator.StepConnect {
 			return buildercommon.VirtualMachineHost, nil
 		},
 		SSHConfig: comm.SSHConfigFunc(),
-		SSHPort: func(bag multistep.StateBag) (int, error) {
-			return buildercommon.GetOrDefault(comm.SSHPort, buildercommon.DefaultSSHPort), nil
-		},
-		WinRMPort: func(bag multistep.StateBag) (int, error) {
-			return buildercommon.GetOrDefault(comm.WinRMPort, buildercommon.DefaultWinRMPort), nil
-		},
 	}
 }
 
@@ -211,7 +202,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		&stepDef.StepPortForwardVM{
 			Clients: b.clients,
-			Comm:    b.config.Comm,
+			Comm:    &b.config.Comm,
 		},
 		connectStep(&b.config.Comm),
 		&commonsteps.StepProvision{},
