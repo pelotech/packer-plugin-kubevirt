@@ -29,6 +29,14 @@ Alternatively, you can use `packer plugins install` to manage installation of th
 $ packer plugins install github.com/pelotech/kubevirt
 ```
 
+Each release is also published as a container image for `linux/amd64` and `linux/arm64`.
+The image only holds the plugin, laid out as a Packer plugin directory, to be copied into your own image:
+
+```dockerfile
+FROM hashicorp/packer:1.16.1
+COPY --from=ghcr.io/pelotech/packer-plugin-kubevirt:<version> / /root/.config/packer/plugins/
+```
+
 ### Components
 
 The KubeVirt plugin is intended for creating VM base images.
