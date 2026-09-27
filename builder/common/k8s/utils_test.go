@@ -75,6 +75,6 @@ func TestRunAsyncPortForward(t *testing.T) {
 
 func TestString(t *testing.T) {
 	println(labels.SelectorFromSet(map[string]string{
-		kubevirtv1.VirtualMachineNameLabel: "name",
+		kubevirtv1.DeprecatedVirtualMachineNameLabel: "name",
 	}).String())
 }

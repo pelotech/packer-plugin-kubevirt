@@ -67,8 +67,8 @@ jobs:
           kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-operator.yaml
           kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-cr.yaml
 
-          kubectl wait --for=jsonpath='{.status.phase}'=Deployed kubevirt/kubevirt --namespace kubevirt --timeout=2m
-          kubectl wait --for=jsonpath='{.status.phase}'=Deployed cdi/cdi --namespace cdi --timeout=2m
+          kubectl wait --for=jsonpath='{.status.phase}'=Deployed kubevirt/kubevirt --namespace kubevirt --timeout=10m
+          kubectl wait --for=jsonpath='{.status.phase}'=Deployed cdi/cdi --namespace cdi --timeout=10m
 
           kubectl apply -k "https://github.com/kubevirt/common-instancetypes/VirtualMachineClusterPreferences?ref=v1.1.0"
           # to skip '/dev/kvm' requirement - but requires testing with custom node and host volume mounting

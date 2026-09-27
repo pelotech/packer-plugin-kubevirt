@@ -75,7 +75,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	name := source.State(buildercommon.VirtualMachineExportNameArtifactKey).(string)
 	token := source.State(buildercommon.VirtualMachineExportTokenArtifactKey).(string)
 
-	export, err := p.virtClient.VirtualMachineExport(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	export, err := p.virtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
 	}
@@ -138,7 +138,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 }
 
 func (p *PostProcessor) cleanupResources(ui packersdk.Ui, ns, name string) {
-	err := p.virtClient.VirtualMachineExport(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err := p.virtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err == nil {
 		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", ns, name))
 	} else {
