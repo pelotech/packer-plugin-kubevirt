@@ -4,6 +4,31 @@ Build virtual machine images on Kubernetes with [KubeVirt](https://kubevirt.io),
 
 ## How it works
 
+```mermaid
+flowchart LR
+    source[("Source<br/>ISO or cloud image<br/>over HTTP or from S3")]
+
+    subgraph builder["Builder kubevirt-iso"]
+        direction TB
+        import["CDI imports the source"]
+        boot["The Virtual Machine boots<br/>boot command over VNC<br/>for a Windows ISO"]
+        provision["Provisioners over SSH or WinRM<br/>once the guest agent answers"]
+        generalize["Generalize and stop<br/>Linux: virt-sysprep<br/>Windows: Sysprep"]
+        export["Virtual Machine Export"]
+        import --> boot --> provision --> generalize --> export
+    end
+
+    s3["kubevirt-s3<br/>gzip, qcow2, vmdk, vhdx, vdi"]
+    oci["kubevirt-oci<br/>containerDisk, qcow2 or raw"]
+    datasource["kubevirt-datasource<br/>imported by CDI"]
+
+    source --> builder
+    builder --> s3 & oci & datasource
+    s3 --> bucket[("S3 bucket")]
+    oci --> registry[("Container registry<br/>preference in the image")]
+    datasource --> ds[("DataSource<br/>preference as a label")]
+```
+
 1. The builder creates a Virtual Machine from an ISO or a cloud image and waits for the guest to be ready.
 2. Packer provisioners run in the guest over SSH or WinRM (shell, Ansible and so on).
 3. The image is generalized and the Virtual Machine is stopped. Linux: the builder stops it, then runs `virt-sysprep` on the disk. Windows: Sysprep runs as your shutdown command and shuts it down.
