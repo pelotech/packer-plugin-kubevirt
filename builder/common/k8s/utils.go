@@ -8,9 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/portforward"
@@ -75,19 +73,13 @@ func runPortForward(clients *Clients, podName, namespace string, ports []string,
 	return forwarder.ForwardPorts()
 }
 
-type HandleEventFunc func(context.Context, watch.Event) (bool, error)
-
-func WaitForResource(client cache.Getter, namespace, resource, name, version string, timeout time.Duration, handleEvent watchtools.ConditionFunc) (*watch.Event, error) {
+func WaitForResource(client cache.Getter, namespace, resource, name, version string, timeout time.Duration, handleEvent watchtools.ConditionFunc) error {
 	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
 	defer cancel()
 
 	listWatch := cache.NewListWatchFromClient(client, resource, namespace, fields.OneTermEqualSelector("metadata.name", name))
-	event, err := watchtools.Until(ctx, version, listWatch, handleEvent)
-	if err != nil {
-		return nil, err
-	}
-
-	return event, nil
+	_, err := watchtools.Until(ctx, version, listWatch, handleEvent)
+	return err
 }
 
 func WaitForJobCompletion(client kubernetes.Interface, ui packersdk.Ui, job *batchv1.Job, timeout time.Duration) error {
@@ -95,9 +87,7 @@ func WaitForJobCompletion(client kubernetes.Interface, ui packersdk.Ui, job *bat
 	defer cancel()
 
 	watcher, err := client.BatchV1().Jobs(job.Namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: labels.SelectorFromSet(map[string]string{
-			"metadata.name": job.Name,
-		}).String(),
+		FieldSelector: fields.OneTermEqualSelector("metadata.name", job.Name).String(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get job state %s/%s: %w", job.Namespace, job.Name, err)
@@ -155,7 +145,7 @@ func describeJobPods(client kubernetes.Interface, job *batchv1.Job) string {
 
 	description := fmt.Sprintf("pod '%s' is '%s'", latestPod.Name, latestPod.Status.Phase)
 	for _, condition := range latestPod.Status.Conditions {
-		if condition.Status == corev1.ConditionFalse && condition.Message != "" {
+		if latestPod.Status.Phase == corev1.PodPending && condition.Status == corev1.ConditionFalse && condition.Message != "" {
 			description += fmt.Sprintf(", %s: %s", condition.Reason, condition.Message)
 		}
 	}
