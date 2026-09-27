@@ -8,7 +8,7 @@ Type: `kubevirt-iso`
 
 The ISO builder is mostly used to create base VM images, an ISO or a cloud image of your choice will be the starting point.
 
-The builder runs against the Kubernetes cluster of your current kube context, with KubeVirt and CDI installed.
+The builder runs against the Kubernetes cluster of your current kube context, with KubeVirt 1.9 or later and CDI installed.
 Once provisioned, the Virtual Machine is stopped, Linux disks are generalized with `virt-sysprep`
 (running as a Kubernetes job in the cluster, nothing to install locally) and the disk is exposed through a Virtual Machine Export.
 

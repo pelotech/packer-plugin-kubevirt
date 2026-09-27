@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"slices"
 	"strings"
 	"testing"
@@ -44,6 +45,18 @@ func readImageEnv(t *testing.T, podSpec corev1.PodSpec) []string {
 	}
 	t.Fatal("expected the image config in the environment of the convert container")
 	return nil
+}
+
+func TestGenerateOCIUploaderJobIsOwnedByExport(t *testing.T) {
+	export := newExport()
+	export.UID = "export-uid"
+
+	job := GenerateOCIUploaderJob(export, newOCIUploaderOptions())
+
+	owner := metav1.GetControllerOf(job)
+	if owner == nil || owner.APIVersion != "export.kubevirt.io/v1" || owner.Kind != "VirtualMachineExport" || owner.UID != export.UID {
+		t.Errorf("expected the job to be owned by the 'v1' export, got: %v", job.OwnerReferences)
+	}
 }
 
 func TestGenerateOCIUploaderJobWithQcow2(t *testing.T) {

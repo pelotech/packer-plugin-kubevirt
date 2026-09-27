@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	exportv1 "kubevirt.io/api/export/v1beta1"
+	exportv1 "kubevirt.io/api/export/v1"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
@@ -88,14 +88,18 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine) (*exportv1.VirtualMachineExport, error) {
 	export := generator.GenerateVirtualMachineExport(vm)
-	return s.Clients.Kubevirt.ExportV1beta1().VirtualMachineExports(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
+	export, err := s.Clients.Kubevirt.ExportV1().VirtualMachineExports(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
+	if k8serrors.IsNotFound(err) {
+		return nil, fmt.Errorf("the cluster does not serve '%s', which needs KubeVirt 1.9 or later: %w", exportv1.SchemeGroupVersion, err)
+	}
+	return export, err
 }
 
 func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.VirtualMachineExport) error {
 	ctx, cancel := context.WithTimeout(context.TODO(), s.VmExportTimeOut)
 	defer cancel()
 
-	watcher, err := s.Clients.Kubevirt.ExportV1beta1().VirtualMachineExports(export.Namespace).Watch(ctx, metav1.ListOptions{
+	watcher, err := s.Clients.Kubevirt.ExportV1().VirtualMachineExports(export.Namespace).Watch(ctx, metav1.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector("metadata.name", export.Name).String(),
 	})
 	if err != nil {
