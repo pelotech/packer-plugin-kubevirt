@@ -16,16 +16,13 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"kubevirt.io/client-go/kubecli"
 	"log"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/vm"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
 )
@@ -55,10 +52,9 @@ type Config struct {
 }
 
 type Builder struct {
-	config     Config
-	runner     multistep.Runner
-	virtClient kubecli.KubevirtClient
-	kubeClient client.Client
+	config  Config
+	runner  multistep.Runner
+	clients *k8s.Clients
 }
 
 func (b *Builder) ConfigSpec() hcldec.ObjectSpec {
@@ -116,24 +112,7 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 		b.config.Comm.WinRMTimeout = 30 * time.Second
 	}
 
-	b.virtClient, err = k8s.GetKubevirtClient()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	scheme := runtime.NewScheme()
-	builders := []runtime.SchemeBuilder{
-		// Add your `SchemeBuilder` containing CRDs (if needed)
-	}
-	for _, builder := range builders {
-		err = builder.AddToScheme(scheme)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	b.kubeClient, err = client.New(b.virtClient.Config(), client.Options{
-		Scheme: scheme,
-	})
+	b.clients, err = k8s.GetKubevirtClient()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -167,8 +146,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
-			VirtClient: b.virtClient,
-			KubeClient: b.kubeClient,
+			Clients: b.clients,
 			VmOptions: generator.VirtualMachineOptions{
 				Name:           b.config.KubernetesName,
 				Namespace:      b.config.KubernetesNamespace,
@@ -192,8 +170,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			VmDeploymentTimeOut: b.config.VirtualMachineDeploymentTimeOut,
 		},
 		&stepDef.StepPortForwardVM{
-			VirtClient: b.virtClient,
-			Comm:       b.config.Comm,
+			Clients: b.clients,
+			Comm:    b.config.Comm,
 		},
 		&communicator.StepConnect{
 			Config: &b.config.Comm,
@@ -224,7 +202,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		&commonsteps.StepProvision{},
 		&stepDef.StepExportVM{
-			VirtClient:      b.virtClient,
+			Clients:         b.clients,
 			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
 		},
 	}

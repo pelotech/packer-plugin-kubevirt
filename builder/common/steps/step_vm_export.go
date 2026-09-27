@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1beta1"
-	"kubevirt.io/client-go/kubecli"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
@@ -25,7 +24,7 @@ const (
 )
 
 type StepExportVM struct {
-	VirtClient      kubecli.KubevirtClient
+	Clients         *k8s.Clients
 	VmExportTimeOut time.Duration
 }
 
@@ -35,7 +34,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	vm := appContext.GetVirtualMachine()
 
 	ui.Say(fmt.Sprintf("stopping Virtual Machine for export %s/%s...", vm.Namespace, vm.Name))
-	err := s.VirtClient.VirtualMachine(vm.Namespace).Stop(context.TODO(), vm.Name, &kubevirtv1.StopOptions{})
+	err := s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace).Stop(context.TODO(), vm.Name, &kubevirtv1.StopOptions{})
 	if err != nil {
 		err := fmt.Errorf("failed to stop Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err)
 		appContext.Put(common.PackerError, err)
@@ -44,7 +43,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 		return multistep.ActionHalt
 	}
 
-	err = k8s.WaitForVirtualMachineStopped(s.VirtClient.VirtualMachine(vm.Namespace), vm.Name, s.VmExportTimeOut)
+	err = k8s.WaitForVirtualMachineStopped(s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace), vm.Name, s.VmExportTimeOut)
 	if err != nil {
 		err := fmt.Errorf("failed to stop Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err)
 		appContext.Put(common.PackerError, err)
@@ -60,7 +59,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 		pvcName := generator.BuildDataVolumeName(vm.Name, generator.SourceDataVolumeSuffix)
 		job := generator.GenerateGuestFSJob(vm, pvcName)
 
-		job, err = s.VirtClient.BatchV1().Jobs(vm.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		job, err = s.Clients.Kubernetes.BatchV1().Jobs(vm.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		if err != nil {
 			err = fmt.Errorf("failed to create 'libguestfs' Job for Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err)
 			appContext.Put(common.PackerError, err)
@@ -69,7 +68,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 			return multistep.ActionHalt
 		}
 
-		err = k8s.WaitForJobCompletion(s.VirtClient, ui, job, s.VmExportTimeOut)
+		err = k8s.WaitForJobCompletion(s.Clients.Kubernetes, ui, job, s.VmExportTimeOut)
 		if err != nil {
 			err := fmt.Errorf("error with 'libguestfs' job %s/%s: %s", vm.Namespace, vm.Name, err)
 			appContext.Put(common.PackerError, err)
@@ -119,17 +118,17 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 func (s *StepExportVM) createExport(ui packer.Ui, vm *kubevirtv1.VirtualMachine) (*exportv1.VirtualMachineExport, error) {
 	export := generator.GenerateVirtualMachineExport(vm)
 
-	_, err := s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(vm.Namespace).Get(context.TODO(), export.Name, metav1.GetOptions{})
+	_, err := s.Clients.Kubevirt.ExportV1beta1().VirtualMachineExports(vm.Namespace).Get(context.TODO(), export.Name, metav1.GetOptions{})
 	if k8serrors.IsAlreadyExists(err) {
 		err = common.AskForRecreation(ui, func() error {
-			return s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(vm.Namespace).Delete(context.TODO(), export.Name, metav1.DeleteOptions{})
+			return s.Clients.Kubevirt.ExportV1beta1().VirtualMachineExports(vm.Namespace).Delete(context.TODO(), export.Name, metav1.DeleteOptions{})
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	export, err = s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
+	export, err = s.Clients.Kubevirt.ExportV1beta1().VirtualMachineExports(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +140,7 @@ func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.Virtual
 	ctx, cancel := context.WithTimeout(context.TODO(), s.VmExportTimeOut)
 	defer cancel()
 
-	watcher, err := s.VirtClient.GeneratedKubeVirtClient().ExportV1beta1().VirtualMachineExports(export.Namespace).Watch(ctx, metav1.ListOptions{
+	watcher, err := s.Clients.Kubevirt.ExportV1beta1().VirtualMachineExports(export.Namespace).Watch(ctx, metav1.ListOptions{
 		FieldSelector: labels.SelectorFromSet(map[string]string{
 			"metadata.name": export.Name,
 		}).String(),
@@ -177,7 +176,7 @@ func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.Virtual
 
 func (s *StepExportVM) createTokenSecret(export *exportv1.VirtualMachineExport, token string) (*corev1.Secret, error) {
 	secret := generator.GenerateTokenSecret(export, token)
-	secret, err := s.VirtClient.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
+	secret, err := s.Clients.Kubernetes.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
 	if err != nil && !k8serrors.IsAlreadyExists(err) {
 		return nil, err
 	}
