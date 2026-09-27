@@ -77,7 +77,7 @@ jobs:
           kubectl wait --for=jsonpath='{.status.phase}'=Deployed kubevirt/kubevirt --namespace kubevirt --timeout=10m
           kubectl wait --for=jsonpath='{.status.phase}'=Deployed cdi/cdi --namespace cdi --timeout=10m
 
-          kubectl apply -k "https://github.com/kubevirt/common-instancetypes/VirtualMachineClusterPreferences?ref=v1.1.0"
+          kubectl apply -k "https://github.com/kubevirt/common-instancetypes/VirtualMachineClusterPreferences?ref=v1.7.0"
           # to skip '/dev/kvm' requirement - but requires testing with custom node and host volume mounting
           # kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'
 
