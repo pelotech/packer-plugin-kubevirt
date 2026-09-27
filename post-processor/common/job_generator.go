@@ -38,6 +38,7 @@ type S3UploaderOptions struct {
 
 	S3BucketName string
 	S3KeyPrefix  string
+	ObjectName   string
 
 	AWSAccessKeyId     *string
 	AWSSecretAccessKey *string
@@ -106,19 +107,35 @@ func buildJobSecretName(name string) string {
 	return fmt.Sprintf("%s-%s", name, jobSecretSuffix)
 }
 
-func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl string) corev1.Container {
-	return corev1.Container{
-		Name:  "download",
-		Image: "curlimages/curl:8.22.0",
-		Command: []string{
-			"/bin/sh",
+func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl string, raw bool) corev1.Container {
+	image := "curlimages/curl:8.22.0"
+	command := []string{
+		"/bin/sh",
+		"-c",
+		fmt.Sprintf("curl --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
+			certVolumeMountPath, exportServerPEMCert,
+			tempVolumeMountPath, downloadedFilename,
+			steps.ExportTokenHeader, exportTokenEnvVar,
+			exportServerUrl),
+	}
+	if raw {
+		// a raw image has the size of the disk, its empty blocks are left out of the file
+		image = qemuImgImage
+		command = []string{
+			"/bin/bash",
 			"-c",
-			fmt.Sprintf("curl --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
+			fmt.Sprintf("set -o pipefail; curl --fail --cacert %s/%s -H \"%s: $%s\" %s | dd of=%s/%s conv=sparse bs=1M",
 				certVolumeMountPath, exportServerPEMCert,
-				tempVolumeMountPath, downloadedFilename,
 				steps.ExportTokenHeader, exportTokenEnvVar,
-				exportServerUrl),
-		},
+				exportServerUrl,
+				tempVolumeMountPath, downloadedFilename),
+		}
+	}
+
+	return corev1.Container{
+		Name:    "download",
+		Image:   image,
+		Command: command,
 		Env: []corev1.EnvVar{
 			{
 				Name: exportTokenEnvVar,
@@ -169,6 +186,11 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 		})
 	}
 
+	objectFilename := filename
+	if opts.ObjectName != "" {
+		objectFilename = opts.ObjectName + strings.TrimPrefix(filename, opts.Name)
+	}
+
 	var serviceAccountName string
 	if opts.ServiceAccountName != nil {
 		serviceAccountName = *opts.ServiceAccountName
@@ -187,7 +209,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccountName,
 					InitContainers: append([]corev1.Container{
-						generateDownloadContainer(buildJobSecretName(opts.Name), downloadedFilename, opts.ExportServerUrl),
+						generateDownloadContainer(buildJobSecretName(opts.Name), downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
 					}, convertContainers...),
 					Containers: []corev1.Container{
 						{
@@ -196,7 +218,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 							Command: []string{
 								"/bin/sh",
 								"-c",
-								fmt.Sprintf("aws s3 cp %s/%s s3://%s", tempVolumeMountPath, filename, path.Join(opts.S3BucketName, opts.S3KeyPrefix, filename)),
+								fmt.Sprintf("aws s3 cp %s/%s s3://%s", tempVolumeMountPath, filename, path.Join(opts.S3BucketName, opts.S3KeyPrefix, objectFilename)),
 							},
 							EnvFrom: []corev1.EnvFromSource{
 								{

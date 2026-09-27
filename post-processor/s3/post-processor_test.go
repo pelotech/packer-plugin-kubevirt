@@ -24,3 +24,23 @@ func TestValidateEndpointUrl(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigureRejectsInvalidObjectName(t *testing.T) {
+	for _, objectName := range []string{"base windows", "base;reboot", "images/base", "$(id)"} {
+		postProcessor := new(PostProcessor)
+		err := postProcessor.Configure(map[string]interface{}{
+			"s3_object_name": objectName,
+		})
+		if err == nil || !strings.Contains(err.Error(), "invalid 's3_object_name' value '"+objectName+"'") {
+			t.Errorf("expected an invalid 's3_object_name' error for '%s', got: %v", objectName, err)
+		}
+	}
+}
+
+func TestValidateObjectName(t *testing.T) {
+	for _, objectName := range []string{"", "base-windows-11", "Win11_LTSC2024_en-us_x64+1.0.0"} {
+		if err := validateObjectName(objectName); err != nil {
+			t.Errorf("expected object name '%s' to be valid, got: %v", objectName, err)
+		}
+	}
+}

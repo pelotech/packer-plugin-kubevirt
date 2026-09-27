@@ -15,6 +15,7 @@ import (
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/post-processor/common"
+	"regexp"
 	"time"
 )
 
@@ -23,6 +24,7 @@ type Config struct {
 	ctx                       interpolate.Context
 	S3Bucket                  string `mapstructure:"s3_bucket"`
 	S3KeyPrefix               string `mapstructure:"s3_key_prefix"`
+	S3ObjectName              string `mapstructure:"s3_object_name" required:"false"`
 	S3EndpointUrl             string `mapstructure:"s3_endpoint_url" required:"false"`
 
 	ServiceAccountName string        `mapstructure:"service_account_name"`
@@ -64,6 +66,11 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 		return err
 	}
 
+	err = validateObjectName(p.config.S3ObjectName)
+	if err != nil {
+		return err
+	}
+
 	p.clients, err = k8s.GetKubevirtClient()
 	if err != nil {
 		return err
@@ -87,6 +94,16 @@ func validateEndpointUrl(endpointUrl string) error {
 	parsed, err := url.Parse(endpointUrl)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return fmt.Errorf("invalid 's3_endpoint_url' value '%s': expected an http or https URL", endpointUrl)
+	}
+	return nil
+}
+
+// the name ends up in the command line of the upload
+var objectNamePattern = regexp.MustCompile(`^[A-Za-z0-9._+-]*$`)
+
+func validateObjectName(objectName string) error {
+	if !objectNamePattern.MatchString(objectName) {
+		return fmt.Errorf("invalid 's3_object_name' value '%s': expected letters, digits, '.', '_', '+' or '-'", objectName)
 	}
 	return nil
 }
@@ -115,6 +132,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		ExportServerCertificate: export.Status.Links.Internal.Cert,
 		S3BucketName:            p.config.S3Bucket,
 		S3KeyPrefix:             p.config.S3KeyPrefix,
+		ObjectName:              p.config.S3ObjectName,
 		S3EndpointUrl:           p.config.S3EndpointUrl,
 		AWSRegion:               p.config.AWSRegion,
 		ImageFormat:             p.config.ImageFormat,

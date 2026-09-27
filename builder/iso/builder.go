@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/hcl/v2/hcldec"
+	"github.com/hashicorp/packer-plugin-sdk/bootcommand"
 	"github.com/hashicorp/packer-plugin-sdk/common"
 	"github.com/hashicorp/packer-plugin-sdk/communicator"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
 	"github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
+	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"log"
@@ -31,6 +33,8 @@ const (
 type Config struct {
 	common.PackerConfig             `mapstructure:",squash"`
 	Comm                            communicator.Config `mapstructure:",squash"`
+	bootcommand.BootConfig          `mapstructure:",squash"`
+	BootKeyInterval                 time.Duration       `mapstructure:"boot_key_interval" required:"false"`
 	KubernetesName                  string              `mapstructure:"kubernetes_name"`
 	KubernetesNamespace             string              `mapstructure:"kubernetes_namespace"`
 	KubernetesNodeSelectors         map[string]string   `mapstructure:"kubernetes_node_selectors"`
@@ -88,6 +92,10 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	}
 	if _, err = resource.ParseQuantity(b.config.VirtualMachineMemory); err != nil {
 		return nil, nil, fmt.Errorf("invalid 'vm_memory' value '%s': %s", b.config.VirtualMachineMemory, err)
+	}
+
+	if errs := b.config.BootConfig.Prepare(&interpolate.Context{}); len(errs) > 0 {
+		return nil, nil, &packer.MultiError{Errors: errs}
 	}
 
 	warnings, err = prepareCommunicator(&b.config.Comm)
@@ -196,6 +204,17 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 					Sysprep:   b.config.VirtualMachineWindowsSysprep,
 				},
 			},
+		},
+		&stepDef.StepBootCommand{
+			Clients:          b.clients,
+			BootCommand:      b.config.BootCommand,
+			BootWait:         b.config.BootWait,
+			KeyInterval:      b.config.BootKeyInterval,
+			KeyGroupInterval: b.config.BootGroupInterval,
+			Timeout:          b.config.VirtualMachineDeploymentTimeOut,
+		},
+		&stepDef.StepWaitForVM{
+			Clients:             b.clients,
 			VmDeploymentTimeOut: b.config.VirtualMachineDeploymentTimeOut,
 		},
 		&stepDef.StepPortForwardVM{

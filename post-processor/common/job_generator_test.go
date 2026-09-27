@@ -99,6 +99,9 @@ func TestGenerateS3UploaderJobWithoutImageFormat(t *testing.T) {
 	if len(podSpec.InitContainers) != 1 || podSpec.InitContainers[0].Name != "download" {
 		t.Fatalf("expected the download init container only, got: %v", podSpec.InitContainers)
 	}
+	if download := strings.Join(podSpec.InitContainers[0].Command, " "); !strings.Contains(download, "-o /tmp/base-ubuntu.img.gz ") {
+		t.Errorf("expected the compressed image to be downloaded as it is, got: %s", download)
+	}
 	if upload := strings.Join(podSpec.Containers[0].Command, " "); !strings.HasSuffix(upload, "/tmp/base-ubuntu.img.gz s3://images/exports/base-ubuntu.img.gz") {
 		t.Errorf("expected the compressed raw image to be uploaded, got: %s", upload)
 	}
@@ -120,8 +123,9 @@ func TestGenerateS3UploaderJobWithImageFormat(t *testing.T) {
 	if len(podSpec.InitContainers) != 2 || podSpec.InitContainers[0].Name != "download" || podSpec.InitContainers[1].Name != "convert" {
 		t.Fatalf("expected the download then convert init containers, got: %v", podSpec.InitContainers)
 	}
-	if download := strings.Join(podSpec.InitContainers[0].Command, " "); !strings.Contains(download, "-o /tmp/base-ubuntu.img ") {
-		t.Errorf("expected the raw image to be downloaded, got: %s", download)
+	// a raw image has the size of the disk, its empty blocks must not fill the node
+	if download := strings.Join(podSpec.InitContainers[0].Command, " "); !strings.Contains(download, "| dd of=/tmp/base-ubuntu.img conv=sparse") {
+		t.Errorf("expected the raw image to be downloaded as a sparse file, got: %s", download)
 	}
 	expectedConvert := "qemu-img convert -f raw -O qcow2 /tmp/base-ubuntu.img /tmp/base-ubuntu.qcow2"
 	if convert := strings.Join(podSpec.InitContainers[1].Command, " "); convert != expectedConvert {
@@ -169,5 +173,31 @@ func TestValidateImageFormat(t *testing.T) {
 	}
 	if err := ValidateImageFormat("iso"); err == nil {
 		t.Error("expected image format 'iso' to be rejected")
+	}
+}
+
+func TestGenerateS3UploaderJobWithObjectName(t *testing.T) {
+	for name, test := range map[string]struct {
+		imageFormat string
+		expected    string
+	}{
+		"converted image":      {imageFormat: "qcow2", expected: "/tmp/base-ubuntu.qcow2 s3://images/exports/Ubuntu_26.04_en-us_x64+1.0.0.qcow2"},
+		"compressed raw image": {imageFormat: "", expected: "/tmp/base-ubuntu.img.gz s3://images/exports/Ubuntu_26.04_en-us_x64+1.0.0.img.gz"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			opts := S3UploaderOptions{
+				Name:         "base-ubuntu",
+				Namespace:    "packer",
+				S3BucketName: "images",
+				S3KeyPrefix:  "exports",
+				ObjectName:   "Ubuntu_26.04_en-us_x64+1.0.0",
+				ImageFormat:  test.imageFormat,
+			}
+
+			podSpec := GenerateS3UploaderJob(newExport(), opts).Spec.Template.Spec
+			if upload := strings.Join(podSpec.Containers[0].Command, " "); !strings.HasSuffix(upload, test.expected) {
+				t.Errorf("expected the image to be uploaded as '%s', got: %s", test.expected, upload)
+			}
+		})
 	}
 }

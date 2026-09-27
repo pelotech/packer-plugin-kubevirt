@@ -232,7 +232,7 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 				Spec: corev1.PodSpec{
 					ServiceAccountName: opts.ServiceAccountName,
 					InitContainers: []corev1.Container{
-						generateDownloadContainer(buildOCIJobSecretName(opts.Name), downloadedFilename, opts.ExportServerUrl),
+						generateDownloadContainer(buildOCIJobSecretName(opts.Name), downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
 						{
 							Name:  "convert",
 							Image: qemuImgImage,

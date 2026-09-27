@@ -11,6 +11,7 @@ The ISO builder is mostly used to create base VM images, an ISO or a cloud image
 The builder runs against the Kubernetes cluster of your current kube context, with KubeVirt 1.9 or later and CDI installed.
 Once provisioned, the Virtual Machine is stopped, Linux disks are generalized with `virt-sysprep`
 (running as a Kubernetes job in the cluster, nothing to install locally) and the disk is exposed through a Virtual Machine Export.
+Windows is generalized by your last provisioner, see [Windows](#windows).
 
 <!-- Builder Configuration Fields -->
 
@@ -66,6 +67,23 @@ Sensitive field - Defaults to empty string (will skip adding credentials)
 
 - `source_aws_secret_access_key` (string) - AWS Secret Access Key for S3 bucket containing VM images
 Sensitive field - Defaults to empty string (will skip adding credentials)
+
+**Boot command fields**
+
+Keys typed in the console of the VM once it runs, before the builder waits for the OS to be installed.
+They follow the [boot command](https://developer.hashicorp.com/packer/docs/templates/legacy_json_templates/communicator#boot-command) syntax of Packer, such as `<enter>`, `<up>` or `<wait5s>`.
+
+- `boot_command` ([]string) - Keys to type
+Defaults to no key, the console is left alone
+
+- `boot_wait` (duration string) - Time to wait after the VM runs, before the first key
+Defaults to `10s`
+
+- `boot_key_interval` (duration string) - Time to wait between two keys
+Defaults to `100ms`
+
+- `boot_keygroup_interval` (duration string) - Time to wait between two items of `boot_command`
+Defaults to no wait
 
 **Communicator configuration fields**
 
@@ -158,22 +176,53 @@ source "kubevirt-iso" "ubuntu" {
 source "kubevirt-iso" "windows" {
   kubernetes_name        = "windows"
   kubernetes_namespace   = "default"
-  source_url             = "https://software.download.prss.microsoft.com/dbazure/Win10_22H2_English_x64v1.iso"
-  kubevirt_os_preference = "windows.10.virtio"
-  vm_disk_space          = "15Gi"
-  # Optional fields
-  vm_windows_sysprep     = file("/path/to/autounattend.xml") # default to generic answer file
-  vm_deployment_timeout  = "20m"                             # default to '10m'
-  vm_export_timeout      = "15m"                             # default to '5m'
+  source_url             = "https://example.com/windows-11.iso"
+  kubevirt_os_preference = "windows.11.virtio"
+  vm_disk_space          = "64Gi"
+  vm_windows_sysprep     = file("/path/to/autounattend.xml")
+  vm_deployment_timeout  = "90m"
+  vm_export_timeout      = "20m"
+
+  boot_wait              = "1s"
+  boot_command           = [for i in range(30) : "<up><wait1s>"]
 
   communicator           = "winrm"
-  winrm_port             = 5985                              # default to a free local port
-  winrm_use_ssl          = false                             # default to false
-  winrm_insecure         = true                              # default to false
-  winrm_timeout          = "30s"                             # default to '30s'
+  winrm_timeout          = "10m"
 }
 
 build {
   sources = ["source.kubevirt-iso.windows"]
+
+  provisioner "powershell" {
+    script = "/path/to/generalize.ps1"
+  }
 }
 ```
+
+The [Windows 11 example](https://github.com/pelotech/packer-plugin-kubevirt/tree/main/example/windows-11) is a complete template, with its answer files.
+
+### Windows
+
+The VM gets four drives. Your answer file has to follow them:
+
+| Drive | Content | Attached as |
+|---|---|---|
+| `C:` | System disk, blank, of `vm_disk_space`. This is the disk that is exported | disk, on the bus of the preference |
+| `D:` | Install ISO of `source_url` | SATA CD-ROM |
+| `E:` | [virtio drivers](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/) and the guest agent | SATA CD-ROM |
+| `F:` | `autounattend.xml` of `vm_windows_sysprep` | SATA CD-ROM |
+
+The firmware, Secure Boot and the TPM come from the preference: `windows.11` and `windows.11.virtio` give UEFI with Secure Boot and a TPM.
+With a `virtio` preference the system disk is a virtio disk, so the answer file has to load the `viostor` driver of `E:` during the setup.
+
+**Boot.** The system disk boots first, then the install ISO. A Windows ISO started with UEFI shows `Press any key to boot from CD or DVD`
+for a few seconds and gives up without a key. Type one every second for a while, as in the example above.
+
+**Readiness.** The VM is ready when its guest agent answers. Install it as the last command of your answer file
+(`E:\guest-agent\qemu-ga-x86_64.msi`), after WinRM is set up, so the provisioners start on a finished install.
+
+**Generalization.** Run Sysprep in your last provisioner, with `/generalize /oobe /quit`, and wait for it to end.
+Do not let it shut Windows down: KubeVirt would start the VM again and Windows would run its first boot during the build.
+The builder stops the VM itself.
+
+**Default answer file.** The one of the source code installs Windows 10 Pro on a BIOS machine. Bring your own for anything else.

@@ -23,7 +23,7 @@ Everything runs in the cluster, as Virtual Machines and jobs. Nothing else than 
 
 Images pushed by `kubevirt-oci` and DataSources created by `kubevirt-datasource` carry the preference of the build, so Virtual Machines created from them can infer it.
 
-Linux builds are covered by the integration test. Windows builds are not.
+Linux builds are covered by the integration test. Windows 11 has its own, started by hand.
 
 ## Requirements
 
@@ -100,6 +100,7 @@ This keeps the image in the cluster. To export it somewhere else as well, chain 
 ```
 
 The [example](example) is a complete template. Its Linux source is the one built by the integration test.
+For Windows, start from the [Windows 11 example](example/windows-11) and read the [Windows section](docs/builders/builder.mdx#windows) of the builder.
 
 ## Documentation
 
@@ -146,6 +147,13 @@ gh workflow run tests.yml --ref <branch>
 ```
 
 The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket, pushed to a registry and imported behind a DataSource, all in the cluster, so the test needs no account. A Virtual Machine is then started from the DataSource to check that the image boots.
+
+The `test plugin with Windows` workflow builds the [Windows 11 example](example/windows-11) from its install ISO, with UEFI, Secure Boot and a TPM.
+It takes about an hour, so it only runs on demand:
+
+```shell
+gh workflow run tests-windows.yml --ref <branch>
+```
 
 ### Release
 

@@ -1,0 +1,183 @@
+# It uses Packer to build the Windows 11 example from its install ISO, with UEFI, Secure Boot and a TPM,
+# on a KinD cluster with KubeVirt and CDI. The image is uploaded to a Garage bucket as a qcow2 file, then read back
+# to check that it holds an installed and generalized Windows.
+#
+# The build takes about an hour, so it only runs when it is started by hand.
+name: test plugin with Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/windows-uefi-builds
+
+concurrency:
+  group: test-plugin-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PRODUCT_VERSION: "1.16.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Run Packer (Windows 11)
+    timeout-minutes: 180
+    env:
+      working-directory: ./example/windows-11
+      VM_NAME: base-windows-11
+      VM_NAMESPACE: packer-windows
+      S3_BUCKET: pelotech-vm-images
+      PKR_VAR_destination_aws_s3_bucket: pelotech-vm-images
+      # region of .github/garage.yaml
+      PKR_VAR_destination_aws_region: us-west-2
+      # the upload runs in a pod, it reaches Garage through its service
+      PKR_VAR_destination_s3_endpoint_url: "http://garage.garage.svc.cluster.local:3900"
+      PKR_VAR_destination_aws_s3_key_prefix: "ci/"
+      # sized for GitHub-hosted runners (4 CPUs, 16Gi)
+      PKR_VAR_vm_cpu: "2"
+      PKR_VAR_vm_memory: "6Gi"
+    steps:
+      - name: repository checkout
+        uses: actions/checkout@v7
+
+      - name: go setup
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+
+      - name: packer plugin build
+        run: go build .
+
+      - name: generate kind config
+        run: |
+          cat <<EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            extraMounts:
+              - hostPath: /dev/kvm
+                containerPath: /dev/kvm
+          EOF
+
+      - name: kind setup
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: kind
+          version: v0.33.0
+          kubectl_version: v1.37.1
+          config: kind-config.yaml
+
+      - name: kubevirt+cdi install
+        run: |
+          export KUBEVIRT_VERSION=$(curl -s https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt)
+          kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml"
+          kubectl create -f "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml"
+
+          export CDI_VERSION=$(basename $(curl -s -w %{redirect_url} https://github.com/kubevirt/containerized-data-importer/releases/latest))
+          kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-operator.yaml
+          kubectl create -f https://github.com/kubevirt/containerized-data-importer/releases/download/${CDI_VERSION}/cdi-cr.yaml
+
+          kubectl wait --for=jsonpath='{.status.phase}'=Deployed kubevirt/kubevirt --namespace kubevirt --timeout=10m
+          kubectl wait --for=jsonpath='{.status.phase}'=Deployed cdi/cdi --namespace cdi --timeout=10m
+
+          kubectl apply -k "https://github.com/kubevirt/common-instancetypes/VirtualMachineClusterPreferences?ref=v1.7.0"
+
+          # takes the screenshots of the console
+          curl --silent --show-error --fail --location --output virtctl "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/virtctl-${KUBEVIRT_VERSION}-linux-amd64"
+          sudo install virtctl /usr/local/bin/virtctl
+
+      - name: garage install
+        run: |
+          kubectl create namespace garage
+          kubectl create secret generic garage --namespace garage --from-literal=rpc-secret="$(openssl rand -hex 32)"
+          kubectl apply -f .github/garage.yaml
+          kubectl rollout status deployment/garage --namespace garage --timeout=5m
+
+          garage() { kubectl exec --namespace garage deployment/garage -- /garage "$@"; }
+          garage layout assign --zone kind --capacity 40G "$(garage node id -q)"
+          garage layout apply --version 1
+
+          access_key_id="GK$(openssl rand -hex 12)"
+          secret_access_key="$(openssl rand -hex 32)"
+          echo "::add-mask::${secret_access_key}"
+          garage key import --yes -n packer "${access_key_id}" "${secret_access_key}" > /dev/null
+          garage bucket create "${S3_BUCKET}"
+          garage bucket allow --read --write "${S3_BUCKET}" --key packer
+
+          echo "PKR_VAR_destination_aws_access_key_id=${access_key_id}" >> "${GITHUB_ENV}"
+          echo "PKR_VAR_destination_aws_secret_access_key=${secret_access_key}" >> "${GITHUB_ENV}"
+
+      - name: packer setup
+        uses: hashicorp/setup-packer@v3.4.0
+        with:
+          version: ${{ env.PRODUCT_VERSION }}
+
+      - name: packer init
+        working-directory: ${{ env.working-directory }}
+        run: |
+          packer plugins install --path ../../packer-plugin-kubevirt "github.com/pelotech/kubevirt"
+          packer init .
+
+      - name: packer validate
+        working-directory: ${{ env.working-directory }}
+        run: |
+          packer validate .
+
+      - name: packer build
+        working-directory: ${{ env.working-directory }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/screenshots"
+          while true; do
+            virtctl vnc screenshot "${VM_NAME}" --namespace "${VM_NAMESPACE}" --file "${RUNNER_TEMP}/screenshots/$(date +%H%M%S).png" > /dev/null 2>&1 || true
+            sleep 60
+          done &
+
+          PACKER_LOG=1 packer build .
+
+      - name: check the image in the bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ env.PKR_VAR_destination_aws_access_key_id }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.PKR_VAR_destination_aws_secret_access_key }}
+          AWS_REGION: us-west-2
+        run: |
+          kubectl port-forward --namespace garage service/garage 3900:3900 &
+          curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:3900
+          aws s3 cp --endpoint-url http://localhost:3900 --no-progress "s3://${S3_BUCKET}/${PKR_VAR_destination_aws_s3_key_prefix}${VM_NAME}.qcow2" "${RUNNER_TEMP}/${VM_NAME}.qcow2"
+
+      - name: check that the image holds a generalized Windows
+        run: |
+          sudo apt-get update > /dev/null
+          sudo apt-get install --yes qemu-utils libguestfs-tools ntfs-3g > /dev/null
+          image="${RUNNER_TEMP}/${VM_NAME}.qcow2"
+          qemu-img info "${image}"
+
+          export LIBGUESTFS_BACKEND=direct
+          sudo --preserve-env=LIBGUESTFS_BACKEND virt-filesystems --add "${image}" --all --long --human-readable | tee filesystems.txt
+          grep --quiet vfat filesystems.txt
+          grep --quiet ntfs filesystems.txt
+
+          sudo --preserve-env=LIBGUESTFS_BACKEND virt-inspector --add "${image}" | tee inspection.xml | grep --extended-regexp '<(name|product_name|osinfo|major_version)>'
+          grep --quiet '<name>windows</name>' inspection.xml
+
+          state="$(sudo --preserve-env=LIBGUESTFS_BACKEND virt-win-reg "${image}" 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State' ImageState)"
+          echo "image state: ${state}"
+          test "${state}" = IMAGE_STATE_GENERALIZE_RESEAL_TO_OOBE
+
+      - name: upload the screenshots of the console
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: console
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
+
+      - name: display cluster state
+        if: failure()
+        run: |
+          df --human-readable /
+          kubectl get virtualmachines,virtualmachineinstances,datavolumes,virtualmachineexports,persistentvolumeclaims,jobs,pods --all-namespaces --output wide
+          kubectl describe virtualmachineinstances --namespace "${VM_NAMESPACE}"
+          kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 50
+          kubectl logs --namespace garage deployment/garage --tail 100 || true

@@ -82,8 +82,10 @@ const (
 type DataVolumeSuffix string
 
 const (
-	SourceDataVolumeSuffix DataVolumeSuffix = "source"
-	VirtioDataVolumeSuffix DataVolumeSuffix = "virtio-drivers"
+	// SourceDataVolumeSuffix names the disk of the Virtual Machine, the one that is exported
+	SourceDataVolumeSuffix       DataVolumeSuffix = "source"
+	InstallMediaDataVolumeSuffix DataVolumeSuffix = "install-media"
+	VirtioDataVolumeSuffix       DataVolumeSuffix = "virtio-drivers"
 )
 
 func BuildDataVolumeName(vmName string, suffix DataVolumeSuffix) string {
@@ -269,6 +271,11 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 }
 
 func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSpace string) []kubevirtv1.DataVolumeTemplateSpec {
+	primaryDiskSource := dvSource
+	if family == vm.Windows {
+		// Disk empty and used as target by Windows install
+		primaryDiskSource = cdiv1beta1.DataVolumeSource{Blank: &cdiv1beta1.DataVolumeBlankImage{}}
+	}
 	templates := []kubevirtv1.DataVolumeTemplateSpec{
 		{
 			ObjectMeta: metav1.ObjectMeta{
@@ -285,13 +292,30 @@ func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVol
 						},
 					},
 				},
-				Source: &dvSource,
+				Source: &primaryDiskSource,
 			},
 		},
 	}
 
 	if family == vm.Windows {
 		templates = append(templates, kubevirtv1.DataVolumeTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: BuildDataVolumeName(vmName, InstallMediaDataVolumeSuffix),
+			},
+			Spec: cdiv1beta1.DataVolumeSpec{
+				PVC: &corev1.PersistentVolumeClaimSpec{
+					AccessModes: []corev1.PersistentVolumeAccessMode{
+						corev1.ReadWriteOnce,
+					},
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSpace),
+						},
+					},
+				},
+				Source: &dvSource,
+			},
+		}, kubevirtv1.DataVolumeTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: BuildDataVolumeName(vmName, VirtioDataVolumeSuffix),
 			},
@@ -357,21 +381,21 @@ func generateDisks(family vm.OsFamily) []kubevirtv1.Disk {
 				},
 			})
 	case vm.Windows:
-		bootOrder := uint(1)
+		// the blank disk cannot boot, so the install media starts until Windows is installed
+		primaryBootOrder, installBootOrder := uint(1), uint(2)
 		disks = append(disks,
-			// Disk C:
+			// Disk C: its bus is the one of the preference
 			kubevirtv1.Disk{
-				Name: string(PrimaryVolumeDiskMapping),
+				Name:      string(PrimaryVolumeDiskMapping),
+				BootOrder: &primaryBootOrder,
 				DiskDevice: kubevirtv1.DiskDevice{
-					Disk: &kubevirtv1.DiskTarget{
-						Bus: kubevirtv1.DiskBusSATA,
-					},
+					Disk: &kubevirtv1.DiskTarget{},
 				},
 			},
 			// Disk D:
 			kubevirtv1.Disk{
 				Name:      string(IsoInstallVolumeDiskMapping),
-				BootOrder: &bootOrder,
+				BootOrder: &installBootOrder,
 				DiskDevice: kubevirtv1.DiskDevice{
 					CDRom: &kubevirtv1.CDRomTarget{
 						Bus: kubevirtv1.DiskBusSATA,
@@ -402,24 +426,14 @@ func generateDisks(family vm.OsFamily) []kubevirtv1.Disk {
 }
 
 func generateVolumes(opts VirtualMachineOptions) []kubevirtv1.Volume {
-	primaryVolumeSource := kubevirtv1.VolumeSource{}
-	switch opts.OsFamily {
-	case vm.Linux:
-		// Disk mounted with Linux cloud image
-		primaryVolumeSource.DataVolume = &kubevirtv1.DataVolumeSource{
-			Name: BuildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
-		}
-	case vm.Windows:
-		// Disk empty and used as target by Windows install
-		primaryVolumeSource.EmptyDisk = &kubevirtv1.EmptyDiskSource{
-			Capacity: resource.MustParse(opts.DiskSpace),
-		}
-	}
-
 	volumes := []kubevirtv1.Volume{
 		{
-			Name:         string(PrimaryVolumeDiskMapping),
-			VolumeSource: primaryVolumeSource,
+			Name: string(PrimaryVolumeDiskMapping),
+			VolumeSource: kubevirtv1.VolumeSource{
+				DataVolume: &kubevirtv1.DataVolumeSource{
+					Name: BuildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
+				},
+			},
 		},
 	}
 
@@ -443,7 +457,7 @@ func generateVolumes(opts VirtualMachineOptions) []kubevirtv1.Volume {
 				Name: string(IsoInstallVolumeDiskMapping),
 				VolumeSource: kubevirtv1.VolumeSource{
 					DataVolume: &kubevirtv1.DataVolumeSource{
-						Name: BuildDataVolumeName(opts.Name, SourceDataVolumeSuffix),
+						Name: BuildDataVolumeName(opts.Name, InstallMediaDataVolumeSuffix),
 					},
 				},
 			},

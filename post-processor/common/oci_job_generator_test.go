@@ -65,7 +65,7 @@ func TestGenerateOCIUploaderJobWithQcow2(t *testing.T) {
 	if len(podSpec.InitContainers) != 2 || podSpec.InitContainers[0].Name != "download" || podSpec.InitContainers[1].Name != "convert" {
 		t.Fatalf("expected the download then convert init containers, got: %v", podSpec.InitContainers)
 	}
-	if download := strings.Join(podSpec.InitContainers[0].Command, " "); !strings.Contains(download, "-o /tmp/base-ubuntu.img ") {
+	if download := strings.Join(podSpec.InitContainers[0].Command, " "); !strings.Contains(download, "| dd of=/tmp/base-ubuntu.img conv=sparse") {
 		t.Errorf("expected the raw image to be downloaded, got: %s", download)
 	}
 	convert := strings.Join(podSpec.InitContainers[1].Command, " ")

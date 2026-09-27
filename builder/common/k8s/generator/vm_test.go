@@ -119,3 +119,109 @@ func TestLinuxProbeFollowsCloudInitStatus(t *testing.T) {
 		})
 	}
 }
+
+func generateWindowsVirtualMachine() *kubevirtv1.VirtualMachine {
+	return GenerateVirtualMachine(VirtualMachineOptions{
+		Name:        "base-windows",
+		Namespace:   "packer",
+		OsFamily:    vm.Windows,
+		DiskSpace:   "64Gi",
+		CPU:         "2",
+		Memory:      "4Gi",
+		ImageSource: ImageSource{URL: "https://example.com/windows.iso"},
+	})
+}
+
+func findDataVolumeTemplate(virtualMachine *kubevirtv1.VirtualMachine, name string) *kubevirtv1.DataVolumeTemplateSpec {
+	for index, template := range virtualMachine.Spec.DataVolumeTemplates {
+		if template.Name == name {
+			return &virtualMachine.Spec.DataVolumeTemplates[index]
+		}
+	}
+	return nil
+}
+
+func TestWindowsSystemDiskIsExported(t *testing.T) {
+	virtualMachine := generateWindowsVirtualMachine()
+
+	// the export step and the post-processors look for the volume named after the source suffix
+	systemDisk := BuildDataVolumeName("base-windows", SourceDataVolumeSuffix)
+	volume := virtualMachine.Spec.Template.Spec.Volumes[0]
+	if volume.Name != string(PrimaryVolumeDiskMapping) {
+		t.Fatalf("expected the first volume to be '%s', got: '%s'", PrimaryVolumeDiskMapping, volume.Name)
+	}
+	if volume.EmptyDisk != nil {
+		t.Errorf("expected the system disk to outlive the Virtual Machine, got an empty disk")
+	}
+	if volume.DataVolume == nil || volume.DataVolume.Name != systemDisk {
+		t.Fatalf("expected the system disk to be the Data Volume '%s', got: %+v", systemDisk, volume.VolumeSource)
+	}
+
+	template := findDataVolumeTemplate(virtualMachine, systemDisk)
+	if template == nil {
+		t.Fatalf("expected a Data Volume template named '%s'", systemDisk)
+	}
+	if template.Spec.Source == nil || template.Spec.Source.Blank == nil {
+		t.Errorf("expected the system disk to start blank, got: %+v", template.Spec.Source)
+	}
+	if size := template.Spec.PVC.Resources.Requests[corev1.ResourceStorage]; size.String() != "64Gi" {
+		t.Errorf("expected a system disk of 64Gi, got: %s", size.String())
+	}
+}
+
+func TestWindowsInstallMediaIsImportedFromTheSource(t *testing.T) {
+	virtualMachine := generateWindowsVirtualMachine()
+
+	installMedia := BuildDataVolumeName("base-windows", InstallMediaDataVolumeSuffix)
+	template := findDataVolumeTemplate(virtualMachine, installMedia)
+	if template == nil {
+		t.Fatalf("expected a Data Volume template named '%s'", installMedia)
+	}
+	if template.Spec.Source == nil || template.Spec.Source.HTTP == nil || template.Spec.Source.HTTP.URL != "https://example.com/windows.iso" {
+		t.Errorf("expected the install media to be imported from the source URL, got: %+v", template.Spec.Source)
+	}
+
+	for _, volume := range virtualMachine.Spec.Template.Spec.Volumes {
+		if volume.Name == string(IsoInstallVolumeDiskMapping) {
+			if volume.DataVolume == nil || volume.DataVolume.Name != installMedia {
+				t.Errorf("expected the install volume to be the Data Volume '%s', got: %+v", installMedia, volume.VolumeSource)
+			}
+			return
+		}
+	}
+	t.Errorf("expected a volume named '%s'", IsoInstallVolumeDiskMapping)
+}
+
+func TestWindowsBootsFromTheSystemDiskFirst(t *testing.T) {
+	virtualMachine := generateWindowsVirtualMachine()
+
+	bootOrders := map[string]uint{}
+	for _, disk := range virtualMachine.Spec.Template.Spec.Domain.Devices.Disks {
+		if disk.BootOrder != nil {
+			bootOrders[disk.Name] = *disk.BootOrder
+		}
+	}
+	// setup reboots into the installed system, the firmware only tries disks that have a boot order
+	if order := bootOrders[string(PrimaryVolumeDiskMapping)]; order != 1 {
+		t.Errorf("expected the system disk to boot first, got boot order: %d", order)
+	}
+	if order := bootOrders[string(IsoInstallVolumeDiskMapping)]; order != 2 {
+		t.Errorf("expected the install media to boot second, got boot order: %d", order)
+	}
+}
+
+func TestWindowsSystemDiskBusIsLeftToThePreference(t *testing.T) {
+	virtualMachine := generateWindowsVirtualMachine()
+
+	for _, disk := range virtualMachine.Spec.Template.Spec.Domain.Devices.Disks {
+		if disk.Name != string(PrimaryVolumeDiskMapping) {
+			continue
+		}
+		// a bus set here wins over the one of the preference, 'windows.11.virtio' would install on SATA
+		if disk.Disk == nil || disk.Disk.Bus != "" {
+			t.Errorf("expected the system disk to have no bus, got: %+v", disk.DiskDevice)
+		}
+		return
+	}
+	t.Errorf("expected a disk named '%s'", PrimaryVolumeDiskMapping)
+}
