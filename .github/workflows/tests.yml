@@ -54,7 +54,7 @@ jobs:
         with:
           cluster_name: kind
           version: v0.24.0
-          kubectl_version: v1.30.4
+          kubectl_version: v1.37.1
           config: kind-config.yaml
 
       - name: kubevirt+cdi install
