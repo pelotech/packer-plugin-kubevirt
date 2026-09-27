@@ -4,6 +4,10 @@ packer {
       version = ">= 0.1.0"
       source  = "github.com/pelotech/kubevirt"
     }
+    ansible = {
+      version = "~> 1"
+      source  = "github.com/hashicorp/ansible"
+    }
   }
 }
 
@@ -38,6 +42,14 @@ build {
   sources = [
     "source.kubevirt-iso.linux"
   ]
+
+  provisioner "ansible" {
+    playbook_file = "${path.root}/ansible/playbook.yaml"
+    # Ansible connects to the forwarded SSH port with the login of the communicator
+    use_proxy       = false
+    user            = build.User
+    extra_arguments = ["--extra-vars", "ansible_password=${build.Password}"]
+  }
 
   post-processor "kubevirt-s3" {
     name                  = "s3"
