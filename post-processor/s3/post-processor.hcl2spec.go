@@ -26,6 +26,7 @@ type FlatConfig struct {
 	AWSRegion           *string           `mapstructure:"aws_region" cty:"aws_region" hcl:"aws_region"`
 	UploadTimeOut       *string           `mapstructure:"upload_timeout" required:"false" cty:"upload_timeout" hcl:"upload_timeout"`
 	ImageFormat         *string           `mapstructure:"image_format" required:"false" cty:"image_format" hcl:"image_format"`
+	KeepExport          *bool             `mapstructure:"keep_export" required:"false" cty:"keep_export" hcl:"keep_export"`
 }
 
 // FlatMapstructure returns a new FlatConfig.
@@ -56,6 +57,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"aws_region":                 &hcldec.AttrSpec{Name: "aws_region", Type: cty.String, Required: false},
 		"upload_timeout":             &hcldec.AttrSpec{Name: "upload_timeout", Type: cty.String, Required: false},
 		"image_format":               &hcldec.AttrSpec{Name: "image_format", Type: cty.String, Required: false},
+		"keep_export":                &hcldec.AttrSpec{Name: "keep_export", Type: cty.Bool, Required: false},
 	}
 	return s
 }
