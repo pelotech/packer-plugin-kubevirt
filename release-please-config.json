@@ -10,7 +10,7 @@
         "README.md",
         "docs/README.md",
         ".web-docs/README.md",
-        "example/build.pkr.hcl"
+        "example/ubuntu-26.04/build.pkr.hcl"
       ]
     }
   }
