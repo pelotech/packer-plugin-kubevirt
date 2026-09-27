@@ -48,6 +48,10 @@ type ImageSource struct {
 	AWSSecretAccessKey string
 }
 
+func (s ImageSource) HasS3Credentials() bool {
+	return s.AWSAccessKeyId != "" && s.AWSSecretAccessKey != ""
+}
+
 type UserProvisioning struct {
 	CloudInit string
 	Sysprep   string
@@ -100,10 +104,6 @@ func buildProbeExecCommand(family vm.OsFamily) []string {
 			"cmd",
 			"/c",
 			"echo",
-			// Error: Warning  Unhealthy kubelet: Readiness probe failed: {"component":"virt-probe","level":"fatal","msg":"Failed executing the command","pos":"virt-probe.go:71","reason":"rpc error: code = Unknown desc = virError(Code=1, Domain=0, Message='internal error: cannot parse json {\"execute\": \"guest-exec\", \"arguments\": { \"path\": \"findstr\", \"arg\": [ \"IMAGE_STATE_COMPLETE\", \"%SystemRoot%\\Setup\\State\\state.ini\" ], \"capture-output\":true } }: lexical error: inside a string, '\\' occurs before a character which it may not.
-			//"findstr",
-			//"IMAGE_STATE_COMPLETE",
-			//"C:\\Windows\\Setup\\State\\State.ini",
 		}
 	}
 
@@ -111,31 +111,16 @@ func buildProbeExecCommand(family vm.OsFamily) []string {
 }
 
 func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) (*corev1.Secret, error) {
-	data := make(map[string]string)
-	scriptsDir := "scripts"
-
-	var rawData []byte
-	var err error
-	switch vm.GetOSFamily(opts.OsDistribution) {
-	case vm.Linux:
-		if opts.UserProvisioning.CloudInit != "" {
-			data["userData"] = opts.UserProvisioning.CloudInit
-		} else {
-			filename := "cloud-init.yaml"
-			rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
-			data["userData"] = string(rawData)
-		}
-	case vm.Windows:
-		if opts.UserProvisioning.Sysprep != "" {
-			data["autounattend.xml"] = opts.UserProvisioning.Sysprep
-		} else {
-			filename := "autounattend.xml"
-			rawData, err = scripts.ReadFile(path.Join(scriptsDir, filename))
-			data[filename] = string(rawData)
-		}
+	key, filename, script := "userData", "cloud-init.yaml", opts.UserProvisioning.CloudInit
+	if opts.OsFamily == vm.Windows {
+		key, filename, script = "autounattend.xml", "autounattend.xml", opts.UserProvisioning.Sysprep
 	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to read startup script file: %s", err)
+	if script == "" {
+		rawData, err := scripts.ReadFile(path.Join("scripts", filename))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read startup script file: %s", err)
+		}
+		script = string(rawData)
 	}
 
 	return &corev1.Secret{
@@ -146,7 +131,7 @@ func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts
 				*metav1.NewControllerRef(virtualMachine, kubevirtv1.VirtualMachineGroupVersionKind),
 			},
 		},
-		StringData: data,
+		StringData: map[string]string{key: script},
 		Type:       corev1.SecretTypeOpaque,
 	}, nil
 }
@@ -203,7 +188,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 	}
 
 	var dataVolumeSource cdiv1beta1.DataVolumeSource
-	if opts.ImageSource.AWSAccessKeyId != "" && opts.ImageSource.AWSSecretAccessKey != "" {
+	if opts.ImageSource.HasS3Credentials() {
 		secretName := buildSecretName(opts.Name, S3CredentialsSuffix)
 		dataVolumeSource = cdiv1beta1.DataVolumeSource{
 			S3: &cdiv1beta1.DataVolumeSourceS3{

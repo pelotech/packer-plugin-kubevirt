@@ -42,6 +42,12 @@ func (s *AppContext) GetPackerUi() packersdk.Ui {
 	return s.get(PackerUi).(packersdk.Ui)
 }
 
+func (s *AppContext) Halt(err error) multistep.StepAction {
+	s.Put(PackerError, err)
+	s.GetPackerUi().Error(err.Error())
+	return multistep.ActionHalt
+}
+
 func (s *AppContext) GetVirtualMachine() *kubevirtv1.VirtualMachine {
 	vm := s.get(VirtualMachine)
 	if vm != nil {
