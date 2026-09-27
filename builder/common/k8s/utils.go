@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/tools/portforward"
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/client-go/transport/spdy"
+	"k8s.io/utils/pointer"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 	kvcorev1 "kubevirt.io/client-go/kubevirt/typed/core/v1"
@@ -30,6 +31,7 @@ import (
 const (
 	PortFowardTimeout              = 5 * time.Second
 	VirtualMachineStopPollInterval = time.Second
+	ContainerLogsTailLines         = 10
 )
 
 func RunAsyncPortForward(client kubecli.KubevirtClient, podName, namespace string, ports []string) (chan struct{}, error) {
@@ -140,33 +142,49 @@ func describeJobPods(client kubernetes.Interface, job *batchv1.Job) string {
 		return fmt.Sprintf("failed to list job pods: %s", err)
 	}
 
-	var descriptions []string
+	var latestPod *corev1.Pod
 	for _, pod := range pods.Items {
 		if !metav1.IsControlledBy(&pod, job) {
 			continue
 		}
-		description := fmt.Sprintf("pod '%s' is '%s'", pod.Name, pod.Status.Phase)
-		for _, condition := range pod.Status.Conditions {
-			if condition.Status == corev1.ConditionFalse && condition.Message != "" {
-				description += fmt.Sprintf(", %s: %s", condition.Reason, condition.Message)
-			}
+		if latestPod == nil || latestPod.CreationTimestamp.Before(&pod.CreationTimestamp) {
+			latestPod = &pod
 		}
-		statuses := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
-		for _, status := range statuses {
-			if waiting := status.State.Waiting; waiting != nil {
-				description += fmt.Sprintf(", container '%s' is waiting: %s %s", status.Name, waiting.Reason, waiting.Message)
-			}
-			if terminated := status.State.Terminated; terminated != nil && terminated.ExitCode != 0 {
-				description += fmt.Sprintf(", container '%s' terminated with exit code %d: %s %s", status.Name, terminated.ExitCode, terminated.Reason, terminated.Message)
-			}
-		}
-		descriptions = append(descriptions, description)
 	}
-	if len(descriptions) == 0 {
+	if latestPod == nil {
 		return "no pod found for the job"
 	}
 
-	return strings.Join(descriptions, "; ")
+	description := fmt.Sprintf("pod '%s' is '%s'", latestPod.Name, latestPod.Status.Phase)
+	for _, condition := range latestPod.Status.Conditions {
+		if condition.Status == corev1.ConditionFalse && condition.Message != "" {
+			description += fmt.Sprintf(", %s: %s", condition.Reason, condition.Message)
+		}
+	}
+	statuses := append(latestPod.Status.InitContainerStatuses, latestPod.Status.ContainerStatuses...)
+	for _, status := range statuses {
+		if waiting := status.State.Waiting; waiting != nil {
+			description += fmt.Sprintf(", container '%s' is waiting: %s %s", status.Name, waiting.Reason, waiting.Message)
+		}
+		if terminated := status.State.Terminated; terminated != nil && terminated.ExitCode != 0 {
+			description += fmt.Sprintf(", container '%s' terminated with exit code %d: %s %s", status.Name, terminated.ExitCode, terminated.Reason, terminated.Message)
+			description += fmt.Sprintf(", last logs: %s", readContainerLogs(client, latestPod, status.Name))
+		}
+	}
+
+	return description
+}
+
+func readContainerLogs(client kubernetes.Interface, pod *corev1.Pod, container string) string {
+	logs, err := client.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+		Container: container,
+		TailLines: pointer.Int64(ContainerLogsTailLines),
+	}).DoRaw(context.Background())
+	if err != nil {
+		return fmt.Sprintf("failed to read logs: %s", err)
+	}
+
+	return strings.TrimSpace(string(logs))
 }
 
 func WaitForVirtualMachineStopped(client kvcorev1.VirtualMachineInterface, name string, timeout time.Duration) error {
