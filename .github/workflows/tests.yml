@@ -12,9 +12,10 @@ on:
   push:
   workflow_dispatch:
 
+# a push to a branch replaces the run of the previous one, every commit of main keeps its own run
 concurrency:
-  group: test-plugin-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: test-plugin-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'latest' }}
+  cancel-in-progress: true
 
 env:
   PRODUCT_VERSION: "1.16.1"
