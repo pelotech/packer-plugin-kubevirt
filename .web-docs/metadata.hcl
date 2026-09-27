@@ -5,9 +5,9 @@
 # Alternatively this metadata.hcl file can be placed under the docs/ subdirectory or any other config subdirectory that
 # makes senses for the plugin.
 integration {
-  name = "Integration Template"
-  description = "This is an integration template"
-  identifier = "packer/hashicorp/scaffolding"
+  name = "KubeVirt"
+  description = "Builds Virtual Machine disk images on Kubernetes with KubeVirt and exports them."
+  identifier = "packer/pelotech/kubevirt"
   flags = [ "community" ]
   docs {
     process_docs = true
@@ -16,31 +16,21 @@ integration {
     #
     # If you need a separate README from what you will display on GitHub vs
     # what is shown on HashiCorp Developer, this is totally valid, though!
-    readme_location = "./INTEGRATION_README.md"
-    external_url = "https://github.com/hashicorp/integration-template"
+    readme_location = "./README.md"
+    external_url = "https://github.com/pelotech/packer-plugin-kubevirt"
   }
   license {
     type = "MPL-2.0"
-    url = "https://github.com/hashicorp/integration-template/blob/main/LICENSE.md"
+    url = "https://github.com/pelotech/packer-plugin-kubevirt/blob/main/LICENSE"
   }
   component {
     type = "builder"
-    name = "Component Name (e.g HappyCloud EBS)"
-    slug = "name"
-  }
-  component {
-    type = "provisioner"
-    name = "Component Name (e.g HappyCloud Shell)"
-    slug = "name"
+    name = "KubeVirt ISO"
+    slug = "builder"
   }
   component {
     type = "post-processor"
-    name = "Component Name"
-    slug = "name"
-  }
-  component {
-    type = "data-source"
-    name = "Component Name"
-    slug = "name"
+    name = "KubeVirt S3"
+    slug = "post-processor"
   }
 }
