@@ -226,3 +226,29 @@ func TestWaitForVirtualMachineStopped(t *testing.T) {
 		t.Fatalf("expected Virtual Machine to be seen as stopped, got: %v", err)
 	}
 }
+
+func TestWaitForJobCompletionReportsConditionsOfPendingPodsOnly(t *testing.T) {
+	unschedulable := corev1.PodCondition{
+		Type:    corev1.PodScheduled,
+		Status:  corev1.ConditionFalse,
+		Reason:  "Unschedulable",
+		Message: "0/1 nodes are available",
+	}
+
+	job, pendingPod := newJobWithPod(corev1.ContainerState{})
+	pendingPod.Status.Conditions = []corev1.PodCondition{unschedulable}
+	err := WaitForJobCompletion(fake.NewSimpleClientset(job, pendingPod), packersdk.TestUi(t), job, 50*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), unschedulable.Message) {
+		t.Errorf("expected error to explain why the pod is pending, got: %v", err)
+	}
+
+	job, failedPod := newJobWithPod(corev1.ContainerState{
+		Terminated: &corev1.ContainerStateTerminated{Reason: "Error", ExitCode: 1},
+	})
+	failedPod.Status.Phase = corev1.PodFailed
+	failedPod.Status.Conditions = []corev1.PodCondition{unschedulable}
+	err = WaitForJobCompletion(fake.NewSimpleClientset(job, failedPod), packersdk.TestUi(t), job, 50*time.Millisecond)
+	if err == nil || strings.Contains(err.Error(), unschedulable.Message) {
+		t.Errorf("expected error to leave out the conditions of a pod that ran, got: %v", err)
+	}
+}

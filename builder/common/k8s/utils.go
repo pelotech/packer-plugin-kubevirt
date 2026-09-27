@@ -155,7 +155,7 @@ func describeJobPods(client kubernetes.Interface, job *batchv1.Job) string {
 
 	description := fmt.Sprintf("pod '%s' is '%s'", latestPod.Name, latestPod.Status.Phase)
 	for _, condition := range latestPod.Status.Conditions {
-		if condition.Status == corev1.ConditionFalse && condition.Message != "" {
+		if latestPod.Status.Phase == corev1.PodPending && condition.Status == corev1.ConditionFalse && condition.Message != "" {
 			description += fmt.Sprintf(", %s: %s", condition.Reason, condition.Message)
 		}
 	}
