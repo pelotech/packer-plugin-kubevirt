@@ -8,6 +8,7 @@ const (
 	VirtualMachineExportNameArtifactKey  = "vmexport"
 	VirtualMachineExportTokenArtifactKey = "token"
 	PreferenceArtifactKey                = "preference"
+	DiskSizeArtifactKey                  = "disksize"
 )
 
 // KubevirtArtifact packersdk.KubevirtArtifact implementation

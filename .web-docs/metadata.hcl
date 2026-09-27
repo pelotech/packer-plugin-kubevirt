@@ -38,4 +38,9 @@ integration {
     name = "KubeVirt OCI"
     slug = "oci"
   }
+  component {
+    type = "post-processor"
+    name = "KubeVirt DataSource"
+    slug = "datasource"
+  }
 }

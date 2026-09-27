@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"packer-plugin-kubevirt/builder/iso"
+	"packer-plugin-kubevirt/post-processor/datasource"
 	"packer-plugin-kubevirt/post-processor/oci"
 	"packer-plugin-kubevirt/post-processor/s3"
 	kubevirtVersion "packer-plugin-kubevirt/version"
@@ -16,6 +17,7 @@ func main() {
 	pps.RegisterBuilder("iso", new(iso.Builder))
 	pps.RegisterPostProcessor("s3", new(s3.PostProcessor))
 	pps.RegisterPostProcessor("oci", new(oci.PostProcessor))
+	pps.RegisterPostProcessor("datasource", new(datasource.PostProcessor))
 	pps.SetVersion(kubevirtVersion.PluginVersion)
 	err := pps.Run()
 	if err != nil {
