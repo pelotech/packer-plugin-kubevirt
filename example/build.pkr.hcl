@@ -58,7 +58,7 @@ source "kubevirt-iso" "linux" {
   source_aws_access_key_id     = var.source_aws_access_key_id     # Optional
   source_aws_secret_access_key = var.source_aws_secret_access_key # Optional
   communicator                 = "ssh"                            # Optional, default to 'ssh'
-  ssh_port                     = 2222                             # Optional, default to 22
+  ssh_port                     = 2222                             # Optional, default to a free local port
 }
 
 source "kubevirt-iso" "windows" {
@@ -110,6 +110,7 @@ build {
   post-processor "kubevirt-s3" {
     s3_bucket             = var.destination_aws_s3_bucket
     s3_key_prefix         = var.destination_aws_s3_key_prefix
+    s3_endpoint_url       = var.destination_s3_endpoint_url # Optional
     aws_region            = var.destination_aws_region
     aws_access_key_id     = var.destination_aws_access_key_id
     aws_secret_access_key = var.destination_aws_secret_access_key

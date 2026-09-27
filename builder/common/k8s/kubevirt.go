@@ -24,7 +24,6 @@ type Clients struct {
 
 func GetKubevirtClient() (*Clients, error) {
 	var config *restclient.Config
-	var err error
 
 	_, ciEnvExists := os.LookupEnv("CI")
 	_, configEnvExists := os.LookupEnv(clientcmd.RecommendedConfigPathEnvVar)
@@ -62,9 +61,8 @@ func GetKubevirtClient() (*Clients, error) {
 	version, err := kubeClient.Discovery().ServerVersion()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve server version: %w", err)
-	} else {
-		fmt.Printf("Server version: %s\n", version.String())
 	}
+	fmt.Printf("Server version: %s\n", version.String())
 
 	return &Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient, CDI: cdiClient, RestConfig: config}, nil
 }

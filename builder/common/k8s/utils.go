@@ -8,9 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/portforward"
@@ -29,6 +27,8 @@ import (
 
 const (
 	PortFowardTimeout              = 5 * time.Second
+	PortForwardRetryInterval       = time.Second
+	PortForwardAddress             = "127.0.0.1"
 	VirtualMachineStopPollInterval = time.Second
 	ContainerLogsTailLines         = 10
 
@@ -37,22 +37,42 @@ const (
 )
 
 func RunAsyncPortForward(clients *Clients, podName, namespace string, ports []string) (chan struct{}, error) {
+	return forwardPortsUntilStopped(func(ready, stop chan struct{}) error {
+		return runPortForward(clients, podName, namespace, ports, ready, stop)
+	}, PortFowardTimeout, PortForwardRetryInterval)
+}
+
+func forwardPortsUntilStopped(forwardPorts func(ready, stop chan struct{}) error, readyTimeout, retryInterval time.Duration) (chan struct{}, error) {
 	stopChan := make(chan struct{}, 1)
 	readyChan := make(chan struct{})
+	endChan := make(chan error, 1)
 
 	go func() {
-		err := runPortForward(clients, podName, namespace, ports, readyChan, stopChan)
-		if err != nil {
-			log.Printf("error while running port forwarding: %v", err)
-		}
+		endChan <- forwardPorts(readyChan, stopChan)
 	}()
 
 	select {
 	case <-readyChan:
 		log.Printf("Port forwarding is ready.")
-	case <-time.After(PortFowardTimeout):
+	case err := <-endChan:
+		return nil, err
+	case <-time.After(readyTimeout):
+		close(stopChan)
 		return nil, fmt.Errorf("timeout waiting for port forwarding to be ready")
 	}
+
+	go func() {
+		err := <-endChan
+		for {
+			select {
+			case <-stopChan:
+				return
+			case <-time.After(retryInterval):
+			}
+			log.Printf("port forwarding ended, setting it up again: %v", err)
+			err = forwardPorts(make(chan struct{}), stopChan)
+		}
+	}()
 
 	return stopChan, nil
 }
@@ -71,7 +91,7 @@ func runPortForward(clients *Clients, podName, namespace string, ports []string,
 	}
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: roundTripper}, http.MethodPost, url)
 
-	forwarder, err := portforward.New(dialer, ports, stop, ready, os.Stdout, os.Stderr)
+	forwarder, err := portforward.NewOnAddresses(dialer, []string{PortForwardAddress}, ports, stop, ready, os.Stdout, os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -79,19 +99,13 @@ func runPortForward(clients *Clients, podName, namespace string, ports []string,
 	return forwarder.ForwardPorts()
 }
 
-type HandleEventFunc func(context.Context, watch.Event) (bool, error)
-
-func WaitForResource(client cache.Getter, namespace, resource, name, version string, timeout time.Duration, handleEvent watchtools.ConditionFunc) (*watch.Event, error) {
+func WaitForResource(client cache.Getter, namespace, resource, name, version string, timeout time.Duration, handleEvent watchtools.ConditionFunc) error {
 	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
 	defer cancel()
 
 	listWatch := cache.NewListWatchFromClient(client, resource, namespace, fields.OneTermEqualSelector("metadata.name", name))
-	event, err := watchtools.Until(ctx, version, listWatch, handleEvent)
-	if err != nil {
-		return nil, err
-	}
-
-	return event, nil
+	_, err := watchtools.Until(ctx, version, listWatch, handleEvent)
+	return err
 }
 
 func WaitForJobCompletion(client kubernetes.Interface, ui packersdk.Ui, job *batchv1.Job, timeout time.Duration) error {
@@ -99,9 +113,7 @@ func WaitForJobCompletion(client kubernetes.Interface, ui packersdk.Ui, job *bat
 	defer cancel()
 
 	watcher, err := client.BatchV1().Jobs(job.Namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: labels.SelectorFromSet(map[string]string{
-			"metadata.name": job.Name,
-		}).String(),
+		FieldSelector: fields.OneTermEqualSelector("metadata.name", job.Name).String(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get job state %s/%s: %w", job.Namespace, job.Name, err)
@@ -213,9 +225,7 @@ func WaitForDataVolumeImport(clients *Clients, ui packersdk.Ui, dataVolume *cdiv
 	defer cancel()
 
 	watcher, err := clients.CDI.CdiV1beta1().DataVolumes(dataVolume.Namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: labels.SelectorFromSet(map[string]string{
-			"metadata.name": dataVolume.Name,
-		}).String(),
+		FieldSelector: fields.OneTermEqualSelector("metadata.name", dataVolume.Name).String(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get Data Volume state %s/%s: %w", dataVolume.Namespace, dataVolume.Name, err)

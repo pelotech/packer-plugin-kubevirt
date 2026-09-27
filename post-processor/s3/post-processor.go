@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"net/url"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/post-processor/common"
@@ -22,6 +23,7 @@ type Config struct {
 	ctx                       interpolate.Context
 	S3Bucket                  string `mapstructure:"s3_bucket"`
 	S3KeyPrefix               string `mapstructure:"s3_key_prefix"`
+	S3EndpointUrl             string `mapstructure:"s3_endpoint_url" required:"false"`
 
 	ServiceAccountName string        `mapstructure:"service_account_name"`
 	AWSAccessKeyId     string        `mapstructure:"aws_access_key_id"`
@@ -29,6 +31,7 @@ type Config struct {
 	AWSRegion          string        `mapstructure:"aws_region"`
 	UploadTimeOut      time.Duration `mapstructure:"upload_timeout" required:"false"`
 	ImageFormat        string        `mapstructure:"image_format" required:"false"`
+	KeepExport         bool          `mapstructure:"keep_export" required:"false"`
 }
 
 type PostProcessor struct {
@@ -56,6 +59,11 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 		return err
 	}
 
+	err = validateEndpointUrl(p.config.S3EndpointUrl)
+	if err != nil {
+		return err
+	}
+
 	p.clients, err = k8s.GetKubevirtClient()
 	if err != nil {
 		return err
@@ -72,6 +80,17 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 	return nil
 }
 
+func validateEndpointUrl(endpointUrl string) error {
+	if endpointUrl == "" {
+		return nil
+	}
+	parsed, err := url.Parse(endpointUrl)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return fmt.Errorf("invalid 's3_endpoint_url' value '%s': expected an http or https URL", endpointUrl)
+	}
+	return nil
+}
+
 func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
 	ns := source.State(buildercommon.NamespaceArtifactKey).(string)
 	name := source.State(buildercommon.VirtualMachineExportNameArtifactKey).(string)
@@ -81,7 +100,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	if err != nil {
 		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
 	}
-	defer p.cleanupResources(ui, ns, name)
+	defer common.DeleteOrKeepExport(p.clients, ui, ns, name, p.config.KeepExport)
 
 	exportServerUrl := common.FindVolumeUrl(export, p.config.ImageFormat)
 	if exportServerUrl == "" {
@@ -96,6 +115,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		ExportServerCertificate: export.Status.Links.Internal.Cert,
 		S3BucketName:            p.config.S3Bucket,
 		S3KeyPrefix:             p.config.S3KeyPrefix,
+		S3EndpointUrl:           p.config.S3EndpointUrl,
 		AWSRegion:               p.config.AWSRegion,
 		ImageFormat:             p.config.ImageFormat,
 	}
@@ -126,13 +146,4 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	}
 
 	return source, true, true, nil
-}
-
-func (p *PostProcessor) cleanupResources(ui packersdk.Ui, ns, name string) {
-	err := p.clients.Kubevirt.ExportV1beta1().VirtualMachineExports(ns).Delete(context.TODO(), name, metav1.DeleteOptions{})
-	if err == nil {
-		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", ns, name))
-	} else {
-		ui.Error(fmt.Sprintf("failed to delete Virtual Machine Export  %s/%s: %v", ns, name, err))
-	}
 }
