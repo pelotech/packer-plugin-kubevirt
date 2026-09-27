@@ -20,15 +20,15 @@ jobs:
       PKR_VAR_destination_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     steps:
       - name: repository checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: go setup
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: 'go.mod'
 
       - name: Cache build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ./packer-plugin-kubevirt
           key: build-${{ hashFiles('**/*.go') }}
@@ -53,8 +53,8 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: kind
-          version: v0.24.0
-          kubectl_version: v1.30.4
+          version: v0.33.0
+          kubectl_version: v1.37.1
           config: kind-config.yaml
 
       - name: kubevirt+cdi install
