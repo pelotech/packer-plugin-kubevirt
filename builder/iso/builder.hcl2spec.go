@@ -88,6 +88,7 @@ type FlatConfig struct {
 	VirtualMachineMemory            *string             `mapstructure:"vm_memory" required:"false" cty:"vm_memory" hcl:"vm_memory"`
 	VirtualMachineDeploymentTimeOut *string             `mapstructure:"vm_deployment_timeout" required:"false" cty:"vm_deployment_timeout" hcl:"vm_deployment_timeout"`
 	VirtualMachineExportTimeOut     *string             `mapstructure:"vm_export_timeout" required:"false" cty:"vm_export_timeout" hcl:"vm_export_timeout"`
+	VirtualMachineSkipVirtSysprep   *bool               `mapstructure:"vm_skip_virt_sysprep" required:"false" cty:"vm_skip_virt_sysprep" hcl:"vm_skip_virt_sysprep"`
 	VirtualMachineLinuxCloudInit    *string             `mapstructure:"vm_linux_cloud_init" required:"false" cty:"vm_linux_cloud_init" hcl:"vm_linux_cloud_init"`
 	VirtualMachineWindowsSysprep    *string             `mapstructure:"vm_windows_sysprep" required:"false" cty:"vm_windows_sysprep" hcl:"vm_windows_sysprep"`
 }
@@ -182,6 +183,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"vm_memory":                    &hcldec.AttrSpec{Name: "vm_memory", Type: cty.String, Required: false},
 		"vm_deployment_timeout":        &hcldec.AttrSpec{Name: "vm_deployment_timeout", Type: cty.String, Required: false},
 		"vm_export_timeout":            &hcldec.AttrSpec{Name: "vm_export_timeout", Type: cty.String, Required: false},
+		"vm_skip_virt_sysprep":         &hcldec.AttrSpec{Name: "vm_skip_virt_sysprep", Type: cty.Bool, Required: false},
 		"vm_linux_cloud_init":          &hcldec.AttrSpec{Name: "vm_linux_cloud_init", Type: cty.String, Required: false},
 		"vm_windows_sysprep":           &hcldec.AttrSpec{Name: "vm_windows_sysprep", Type: cty.String, Required: false},
 	}

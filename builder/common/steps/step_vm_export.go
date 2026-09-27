@@ -13,7 +13,6 @@ import (
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
-	vmctx "packer-plugin-kubevirt/builder/common/vm"
 	"time"
 )
 
@@ -31,35 +30,6 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	appContext := &common.AppContext{State: state}
 	ui := appContext.GetPackerUi()
 	vm := appContext.GetVirtualMachine()
-
-	ui.Say(fmt.Sprintf("stopping Virtual Machine for export %s/%s...", vm.Namespace, vm.Name))
-	err := s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace).Stop(context.TODO(), vm.Name, &kubevirtv1.StopOptions{})
-	if err != nil {
-		return appContext.Halt(fmt.Errorf("failed to stop Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
-	}
-
-	err = k8s.WaitForVirtualMachineStopped(s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace), vm.Name, s.VmExportTimeOut)
-	if err != nil {
-		return appContext.Halt(fmt.Errorf("failed to stop Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
-	}
-
-	osFamily := *appContext.GetVirtualMachineOSFamily()
-	if vmctx.Linux == osFamily {
-		ui.Say(fmt.Sprintf("generify-ing with 'virt-sysprep' Virtual Machine for export %s/%s...", vm.Namespace, vm.Name))
-
-		pvcName := generator.BuildDataVolumeName(vm.Name, generator.SourceDataVolumeSuffix)
-		job := generator.GenerateGuestFSJob(vm, pvcName)
-
-		job, err = s.Clients.Kubernetes.BatchV1().Jobs(vm.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-		if err != nil {
-			return appContext.Halt(fmt.Errorf("failed to create 'libguestfs' Job for Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
-		}
-
-		err = k8s.WaitForJobCompletion(s.Clients.Kubernetes, ui, job, s.VmExportTimeOut)
-		if err != nil {
-			return appContext.Halt(fmt.Errorf("error with 'libguestfs' job %s/%s: %s", vm.Namespace, vm.Name, err))
-		}
-	}
 
 	ui.Say(fmt.Sprintf("creating Virtual Machine Export %s/%s...", vm.Namespace, vm.Name))
 

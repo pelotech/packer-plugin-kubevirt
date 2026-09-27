@@ -31,7 +31,7 @@ flowchart LR
 
 1. The builder creates a Virtual Machine from an ISO or a cloud image and waits for the guest to be ready.
 2. Packer provisioners run in the guest over SSH or WinRM (shell, Ansible and so on).
-3. The image is generalized and the Virtual Machine is stopped. Linux: the builder stops it, then runs `virt-sysprep` on the disk. Windows: Sysprep runs as your shutdown command and shuts it down.
+3. The image is generalized and the Virtual Machine is stopped. Linux: the builder stops it, then runs `virt-sysprep` on the disk, unless `vm_skip_virt_sysprep` is set. Windows: Sysprep runs as your shutdown command and shuts it down.
 4. The disk is exposed through a Virtual Machine Export.
 5. Post-processors export the disk. Several can run on the same build.
 

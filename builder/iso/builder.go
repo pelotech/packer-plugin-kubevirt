@@ -50,6 +50,7 @@ type Config struct {
 	VirtualMachineMemory            string              `mapstructure:"vm_memory" required:"false"`
 	VirtualMachineDeploymentTimeOut time.Duration       `mapstructure:"vm_deployment_timeout" required:"false"`
 	VirtualMachineExportTimeOut     time.Duration       `mapstructure:"vm_export_timeout" required:"false"`
+	VirtualMachineSkipVirtSysprep   bool                `mapstructure:"vm_skip_virt_sysprep" required:"false"`
 	VirtualMachineLinuxCloudInit    string              `mapstructure:"vm_linux_cloud_init" required:"false"`
 	VirtualMachineWindowsSysprep    string              `mapstructure:"vm_windows_sysprep" required:"false"`
 }
@@ -230,6 +231,11 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			Clients:         b.clients,
 			ShutdownCommand: b.config.ShutdownCommand,
 			ShutdownTimeout: b.config.ShutdownTimeout,
+		},
+		&stepDef.StepGeneralize{
+			Clients:         b.clients,
+			SkipVirtSysprep: b.config.VirtualMachineSkipVirtSysprep,
+			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
 		},
 		&stepDef.StepExportVM{
 			Clients:         b.clients,
