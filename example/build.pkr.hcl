@@ -123,5 +123,10 @@ build {
     registry_username = var.destination_oci_registry_username # Optional
     registry_password = var.destination_oci_registry_password # Optional
     registry_insecure = var.destination_oci_registry_insecure # Optional
+    keep_export       = true                                  # Optional, the next post-processor uses the export too
+  }
+
+  post-processor "kubevirt-datasource" {
+    datasource_name = "base-ubuntu" # Optional, default to the Kubernetes name
   }
 }

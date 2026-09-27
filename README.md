@@ -144,7 +144,7 @@ It runs on every push, or on demand:
 gh workflow run tests.yml --ref <branch>
 ```
 
-The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket and pushed to a registry, both in the cluster, so the test needs no account.
+The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket, pushed to a registry and imported behind a DataSource, all in the cluster, so the test needs no account. A Virtual Machine is then started from the DataSource to check that the image boots.
 
 ### Release
 
