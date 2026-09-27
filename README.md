@@ -149,4 +149,10 @@ The image is uploaded to a [Garage](https://garagehq.deuxfleurs.fr) bucket, push
 
 ### Release
 
-A tag `v*` builds the binaries, publishes the GitHub release and pushes the container image.
+[release-please](https://github.com/googleapis/release-please) reads the commits of `main` and keeps a release pull request open, with the next version and the changelog.
+A `fix` bumps the patch version. A `feat` or, until 1.0.0, a breaking change bumps the minor version.
+
+Merging that pull request creates the tag and the GitHub release. GoReleaser then builds the binaries, attaches them to the release and pushes the container image.
+
+To release by hand, push a tag `v*` on a commit of `main`: GoReleaser runs the same way and creates the release.
+Then set that version in `version/version.go` and `.release-please-manifest.json`, so that release-please starts from it.
