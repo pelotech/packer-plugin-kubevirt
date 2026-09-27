@@ -143,6 +143,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 
 	osFamily := vm.GetOSFamily(b.config.KubevirtOsPreference)
 	appContext.Put(buildercommon.VirtualMachineOsFamily, &osFamily)
+	appContext.Put(buildercommon.Preference, b.config.KubevirtOsPreference)
+	appContext.Put(buildercommon.DiskSize, b.config.VirtualMachineDiskSpace)
 
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{

@@ -18,6 +18,8 @@ const (
 	VirtualMachineOsFamily    StateBagEntry = "vmosfamily"
 	VirtualMachineExport      StateBagEntry = "vmexport"
 	VirtualMachineExportToken StateBagEntry = "vmexporttoken"
+	Preference                StateBagEntry = "preference"
+	DiskSize                  StateBagEntry = "disksize"
 
 	VirtualMachineHost     = "127.0.0.1"
 	VirtualMachineUsername = "packer"
@@ -70,6 +72,22 @@ func (s *AppContext) GetVirtualMachineExportToken() string {
 	return s.get(VirtualMachineExportToken).(string)
 }
 
+func (s *AppContext) GetPreference() string {
+	preference := s.get(Preference)
+	if preference != nil {
+		return preference.(string)
+	}
+	return ""
+}
+
+func (s *AppContext) GetDiskSize() string {
+	diskSize := s.get(DiskSize)
+	if diskSize != nil {
+		return diskSize.(string)
+	}
+	return ""
+}
+
 func (s *AppContext) BuildArtifact(builderId string) packersdk.Artifact {
 	return &KubevirtArtifact{
 		BuilderIdValue: builderId,
@@ -77,6 +95,8 @@ func (s *AppContext) BuildArtifact(builderId string) packersdk.Artifact {
 			NamespaceArtifactKey:                 s.GetVirtualMachineExport().Namespace,
 			VirtualMachineExportNameArtifactKey:  s.GetVirtualMachineExport().Name,
 			VirtualMachineExportTokenArtifactKey: s.GetVirtualMachineExportToken(),
+			PreferenceArtifactKey:                s.GetPreference(),
+			DiskSizeArtifactKey:                  s.GetDiskSize(),
 		},
 	}
 }

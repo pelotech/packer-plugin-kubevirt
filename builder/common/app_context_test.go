@@ -26,3 +26,22 @@ func TestBuildArtifactFromGeneratedExport(t *testing.T) {
 		t.Errorf("expected export namespace '%s', got: '%v'", vm.Namespace, namespace)
 	}
 }
+
+func TestBuildArtifactWithDiskSize(t *testing.T) {
+	vm := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+	}
+	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
+	appContext.Put(common.VirtualMachineExport, generator.GenerateVirtualMachineExport(vm))
+	appContext.Put(common.VirtualMachineExportToken, "token")
+
+	if diskSize := appContext.BuildArtifact("kubevirt.iso").State(common.DiskSizeArtifactKey); diskSize != "" {
+		t.Errorf("expected an empty disk size when the builder did not set it, got: '%v'", diskSize)
+	}
+
+	appContext.Put(common.DiskSize, "10Gi")
+
+	if diskSize := appContext.BuildArtifact("kubevirt.iso").State(common.DiskSizeArtifactKey); diskSize != "10Gi" {
+		t.Errorf("expected disk size '10Gi', got: '%v'", diskSize)
+	}
+}
