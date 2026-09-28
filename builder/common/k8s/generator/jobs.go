@@ -32,6 +32,7 @@ func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, userToKeep string) *batch
 		},
 		Spec: batchv1.JobSpec{
 			TTLSecondsAfterFinished: ptr.To[int32](30),
+			BackoffLimit:            ptr.To[int32](1),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					NodeSelector:  vm.Spec.Template.Spec.NodeSelector,

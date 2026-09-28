@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	gossh "golang.org/x/crypto/ssh"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"net"
@@ -18,6 +19,7 @@ import (
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/vm"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -111,17 +113,74 @@ func TestPrepareChecksRequiredSettings(t *testing.T) {
 	}
 }
 
-func TestDecodeTolerations(t *testing.T) {
-	tolerations := decodeTolerations([]map[string]string{
-		{"key": "pelo.tech/kvm", "operator": "Equal", "value": "true", "effect": "NoSchedule"},
-	})
+func TestPrepareChecksTolerations(t *testing.T) {
+	useTestCluster(t)
+	exampleToleration := map[string]string{"key": "pelo.tech/kvm", "operator": "Equal", "value": "true", "effect": "NoSchedule"}
 
-	if len(tolerations) != 1 {
-		t.Fatalf("expected one toleration, got: %v", tolerations)
+	tests := map[string]struct {
+		toleration map[string]string
+		expected   string
+	}{
+		"example toleration":             {exampleToleration, ""},
+		"misspelled field":               {map[string]string{"key": "pelo.tech/kvm", "operator": "Exists", "efect": "NoSchedule"}, "invalid 'kubernetes_tolerations[1]' field 'efect'"},
+		"tolerationSeconds not a number": {map[string]string{"operator": "Exists", "effect": "NoExecute", "tolerationSeconds": "abc"}, "invalid 'kubernetes_tolerations[1].tolerationSeconds' value 'abc'"},
+		"unknown operator":               {map[string]string{"key": "pelo.tech/kvm", "operator": "Equals", "value": "true"}, "invalid 'kubernetes_tolerations[1].operator' value 'Equals'"},
+		"unknown effect":                 {map[string]string{"key": "pelo.tech/kvm", "operator": "Exists", "effect": "NoScheduled"}, "invalid 'kubernetes_tolerations[1].effect' value 'NoScheduled'"},
 	}
-	toleration := tolerations[0]
-	if toleration.Key != "pelo.tech/kvm" || toleration.Operator != "Equal" || toleration.Value != "true" || toleration.Effect != "NoSchedule" {
-		t.Errorf("unexpected toleration: %+v", toleration)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			builder := new(Builder)
+			_, _, err := builder.Prepare(map[string]interface{}{
+				"kubernetes_namespace":   "packer-linux",
+				"kubernetes_tolerations": []map[string]string{exampleToleration, test.toleration},
+				"source_url":             "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img",
+				"vm_disk_size":           "4Gi",
+				"vm_name":                "base-ubuntu-2604",
+				"vm_preference":          "ubuntu",
+			})
+			if test.expected != "" {
+				if err == nil || !strings.Contains(err.Error(), test.expected) {
+					t.Errorf("expected an error containing %q, got: %v", test.expected, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected the settings to be valid, got: %v", err)
+			}
+
+			var deploy *stepDef.StepDeployVM
+			for _, step := range builder.steps() {
+				if found, ok := step.(*stepDef.StepDeployVM); ok {
+					deploy = found
+				}
+			}
+			if deploy == nil {
+				t.Fatal("expected a deploy step")
+			}
+			example := v1.Toleration{Key: "pelo.tech/kvm", Operator: v1.TolerationOpEqual, Value: "true", Effect: v1.TaintEffectNoSchedule}
+			if expected := []v1.Toleration{example, example}; !reflect.DeepEqual(deploy.VmOptions.Tolerations, expected) {
+				t.Errorf("expected the tolerations %+v, got: %+v", expected, deploy.VmOptions.Tolerations)
+			}
+		})
+	}
+}
+
+func TestDecodeTolerations(t *testing.T) {
+	tolerations, err := decodeTolerations([]map[string]string{
+		{"key": "pelo.tech/kvm", "operator": "Equal", "value": "true", "effect": "NoSchedule"},
+		{"operator": "Exists", "effect": "NoExecute", "tolerationSeconds": "300"},
+	})
+	if err != nil {
+		t.Fatalf("expected the tolerations to be valid, got: %v", err)
+	}
+
+	seconds := int64(300)
+	expected := []v1.Toleration{
+		{Key: "pelo.tech/kvm", Operator: v1.TolerationOpEqual, Value: "true", Effect: v1.TaintEffectNoSchedule},
+		{Operator: v1.TolerationOpExists, Effect: v1.TaintEffectNoExecute, TolerationSeconds: &seconds},
+	}
+	if !reflect.DeepEqual(tolerations, expected) {
+		t.Errorf("expected the tolerations %+v, got: %+v", expected, tolerations)
 	}
 }
 

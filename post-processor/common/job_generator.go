@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/validate/content"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/utils/ptr"
 	exportv1 "kubevirt.io/api/export/v1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
@@ -160,6 +161,8 @@ func generateUploaderJob(export *exportv1.VirtualMachineExport, name, namespace,
 			},
 		},
 		Spec: batchv1.JobSpec{
+			// one retry for a transient error, each retry downloads the whole disk again
+			BackoffLimit: ptr.To[int32](1),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccountName,
