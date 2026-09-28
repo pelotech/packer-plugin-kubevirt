@@ -9,6 +9,8 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	gossh "golang.org/x/crypto/ssh"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -42,6 +44,68 @@ func TestPrepareRejectsNegativeExportTTL(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "invalid 'vm_export_ttl' value '-1h0m0s'") {
 		t.Errorf("expected an invalid 'vm_export_ttl' error, got: %v", err)
+	}
+}
+
+// useTestCluster points the Kubernetes client at a server that only answers the version request
+func useTestCluster(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		_, _ = response.Write([]byte(`{"major": "1", "minor": "33", "gitVersion": "v1.33.0"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	config := clientcmdapi.NewConfig()
+	config.Clusters["test"] = &clientcmdapi.Cluster{Server: server.URL}
+	config.Contexts["test"] = &clientcmdapi.Context{Cluster: "test"}
+	config.CurrentContext = "test"
+	kubeconfig := filepath.Join(t.TempDir(), "kubeconfig")
+	if err := clientcmd.WriteToFile(*config, kubeconfig); err != nil {
+		t.Fatalf("failed to write the kubeconfig: %v", err)
+	}
+	t.Setenv(clientcmd.RecommendedConfigPathEnvVar, kubeconfig)
+}
+
+func TestPrepareChecksRequiredSettings(t *testing.T) {
+	useTestCluster(t)
+
+	tests := map[string]struct {
+		setting  string
+		value    string
+		expected string
+	}{
+		"example settings":             {},
+		"longest vm_name":              {"vm_name", strings.Repeat("a", 52), ""},
+		"missing kubernetes_namespace": {"kubernetes_namespace", "", "'kubernetes_namespace' is required"},
+		"invalid kubernetes_namespace": {"kubernetes_namespace", "packer_linux", "invalid 'kubernetes_namespace' value 'packer_linux'"},
+		"missing source_url":           {"source_url", "", "'source_url' is required"},
+		"missing vm_preference":        {"vm_preference", "", "'vm_preference' is required"},
+		"missing vm_disk_size":         {"vm_disk_size", "", "'vm_disk_size' is required"},
+		"invalid vm_disk_size":         {"vm_disk_size", "plenty", "invalid 'vm_disk_size' value 'plenty'"},
+		"missing vm_name":              {"vm_name", "", "'vm_name' is required"},
+		"too long vm_name":             {"vm_name", strings.Repeat("a", 53), "must be no more than 52 characters"},
+		"vm_name with a dot":           {"vm_name", "base.ubuntu", "invalid 'vm_name' value 'base.ubuntu'"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			settings := map[string]interface{}{
+				"kubernetes_namespace": "packer-linux",
+				"source_url":           "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img",
+				"vm_disk_size":         "4Gi",
+				"vm_name":              "base-ubuntu-2604",
+				"vm_preference":        "ubuntu",
+			}
+			if test.setting != "" {
+				settings[test.setting] = test.value
+			}
+
+			_, _, err := new(Builder).Prepare(settings)
+			if test.expected == "" && err != nil {
+				t.Errorf("expected the settings to be valid, got: %v", err)
+			}
+			if test.expected != "" && (err == nil || !strings.Contains(err.Error(), test.expected)) {
+				t.Errorf("expected an error containing %q, got: %v", test.expected, err)
+			}
+		})
 	}
 }
 

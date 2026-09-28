@@ -19,12 +19,15 @@ import (
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/api/validate/content"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"log"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/vm"
+	"strings"
 	"time"
 )
 
@@ -66,6 +69,9 @@ func (b *Builder) ConfigSpec() hcldec.ObjectSpec {
 	return b.config.FlatMapstructure().HCL2Spec()
 }
 
+// the generalize Job is named <vm_name>-libguestfs, and Kubernetes copies a Job name into a label of its pods
+const maxVirtualMachineNameLength = content.LabelValueMaxLength - len("-libguestfs")
+
 func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings []string, err error) {
 	err = config.Decode(&b.config, &config.DecodeOpts{
 		PluginType:  builderId,
@@ -101,6 +107,34 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 	}
 	if _, err = resource.ParseQuantity(b.config.VirtualMachineMemory); err != nil {
 		return nil, nil, fmt.Errorf("invalid 'vm_memory' value '%s': %s", b.config.VirtualMachineMemory, err)
+	}
+
+	for _, setting := range []struct{ name, value string }{
+		{"kubernetes_namespace", b.config.KubernetesNamespace},
+		{"source_url", b.config.SourceUrl},
+		{"vm_disk_size", b.config.VirtualMachineDiskSize},
+		{"vm_name", b.config.VirtualMachineName},
+		{"vm_preference", b.config.VirtualMachinePreference},
+	} {
+		if setting.value == "" {
+			return nil, nil, fmt.Errorf("'%s' is required", setting.name)
+		}
+	}
+
+	if problems := validation.IsDNS1123Label(b.config.KubernetesNamespace); len(problems) > 0 {
+		return nil, nil, fmt.Errorf("invalid 'kubernetes_namespace' value '%s': %s", b.config.KubernetesNamespace, strings.Join(problems, ", "))
+	}
+
+	if len(b.config.VirtualMachineName) > maxVirtualMachineNameLength {
+		return nil, nil, fmt.Errorf("invalid 'vm_name' value '%s': %s", b.config.VirtualMachineName, validation.MaxLenError(maxVirtualMachineNameLength))
+	}
+	// no dots: KubeVirt cuts the name at its first dot in the pod label the port forwarding looks up
+	if problems := validation.IsDNS1123Label(b.config.VirtualMachineName); len(problems) > 0 {
+		return nil, nil, fmt.Errorf("invalid 'vm_name' value '%s': %s", b.config.VirtualMachineName, strings.Join(problems, ", "))
+	}
+
+	if _, err = resource.ParseQuantity(b.config.VirtualMachineDiskSize); err != nil {
+		return nil, nil, fmt.Errorf("invalid 'vm_disk_size' value '%s': %s", b.config.VirtualMachineDiskSize, err)
 	}
 
 	if errs := b.config.BootConfig.Prepare(&interpolate.Context{}); len(errs) > 0 {
