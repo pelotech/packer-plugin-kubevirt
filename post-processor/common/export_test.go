@@ -39,6 +39,18 @@ func TestDeleteOrKeepExport(t *testing.T) {
 	}
 }
 
+func TestDeleteOrKeepExportWhenAlreadyGone(t *testing.T) {
+	export := newExport()
+	clients := &k8s.Clients{Kubevirt: kubevirtfake.NewSimpleClientset()}
+	ui := &packersdk.MockUi{}
+
+	DeleteOrKeepExport(clients, ui, export.Namespace, export.Name, false)
+
+	if ui.ErrorCalled {
+		t.Errorf("expected no error for an export that is already gone, got: %s", ui.ErrorMessage)
+	}
+}
+
 func TestRunUploadJobStopsWaitingWhenCancelled(t *testing.T) {
 	clients := &k8s.Clients{Kubernetes: k8sfake.NewSimpleClientset()}
 	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu-s3-uploader", Namespace: "packer"}}
