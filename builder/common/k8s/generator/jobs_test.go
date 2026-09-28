@@ -11,7 +11,7 @@ func TestGenerateGuestFSJobIsRetriedOnce(t *testing.T) {
 	job := GenerateGuestFSJob(&kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
 		Spec:       kubevirtv1.VirtualMachineSpec{Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{}},
-	})
+	}, "packer")
 
 	// Kubernetes retries a job 6 times when its backoff limit is unset
 	if retries := ptr.Deref(job.Spec.BackoffLimit, 6); retries != 1 {
