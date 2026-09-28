@@ -6,8 +6,11 @@ import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"testing"
@@ -36,6 +39,33 @@ func TestDeleteOrKeepExport(t *testing.T) {
 				t.Errorf("expected %d Virtual Machine Export, got: %d", test.expectedCount, len(exports.Items))
 			}
 		})
+	}
+}
+
+func TestDeleteOrKeepExportWhenAlreadyGone(t *testing.T) {
+	export := newExport()
+	clients := &k8s.Clients{Kubevirt: kubevirtfake.NewSimpleClientset()}
+	ui := &packersdk.MockUi{}
+
+	DeleteOrKeepExport(clients, ui, export.Namespace, export.Name, false)
+
+	if ui.ErrorCalled {
+		t.Errorf("expected no error for an export that is already gone, got: %s", ui.ErrorMessage)
+	}
+}
+
+func TestDeleteOrKeepExportReportsAFailedDelete(t *testing.T) {
+	export := newExport()
+	kubevirtClient := kubevirtfake.NewSimpleClientset(export)
+	kubevirtClient.PrependReactor("delete", "virtualmachineexports", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, k8serrors.NewInternalError(errors.New("etcd is unavailable"))
+	})
+	ui := &packersdk.MockUi{}
+
+	DeleteOrKeepExport(&k8s.Clients{Kubevirt: kubevirtClient}, ui, export.Namespace, export.Name, false)
+
+	if !ui.ErrorCalled {
+		t.Errorf("expected an error for an export that failed to delete")
 	}
 }
 

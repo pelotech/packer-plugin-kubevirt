@@ -6,6 +6,7 @@ import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	exportv1 "kubevirt.io/api/export/v1"
 	buildercommon "packer-plugin-kubevirt/builder/common"
@@ -38,6 +39,8 @@ func DeleteOrKeepExport(clients *k8s.Clients, ui packersdk.Ui, namespace, name s
 	err := clients.Kubevirt.ExportV1().VirtualMachineExports(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err == nil {
 		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s has been deleted", namespace, name))
+	} else if k8serrors.IsNotFound(err) {
+		ui.Message(fmt.Sprintf("Virtual Machine Export %s/%s is already gone", namespace, name))
 	} else {
 		ui.Error(fmt.Sprintf("failed to delete Virtual Machine Export %s/%s: %v", namespace, name, err))
 	}
