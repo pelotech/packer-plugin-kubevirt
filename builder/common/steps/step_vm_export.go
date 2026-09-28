@@ -134,12 +134,13 @@ func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.Virtual
 
 func (s *StepExportVM) createTokenSecret(export *exportv1.VirtualMachineExport, token string) error {
 	secret := generator.GenerateTokenSecret(export, token)
-	_, err := s.Clients.Kubernetes.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
-	if err != nil && !k8serrors.IsAlreadyExists(err) {
-		return err
+	secrets := s.Clients.Kubernetes.CoreV1().Secrets(export.Namespace)
+	_, err := secrets.Create(context.Background(), secret, metav1.CreateOptions{})
+	if k8serrors.IsAlreadyExists(err) {
+		// left by a previous export of the same name: replace its token and its owner
+		_, err = secrets.Update(context.Background(), secret, metav1.UpdateOptions{})
 	}
-
-	return nil
+	return err
 }
 
 // Cleanup deletes the export of a failed build only: the post-processors download from it

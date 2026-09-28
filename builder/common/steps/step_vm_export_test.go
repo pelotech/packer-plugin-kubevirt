@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -218,6 +219,62 @@ func TestStepExportVMHandsTheVirtualMachineToItsExport(t *testing.T) {
 	}
 	if !appContext.IsVirtualMachineOwnedByExport() {
 		t.Errorf("expected the hand over to be recorded")
+	}
+}
+
+func TestStepExportVMReplacesTheTokenSecretOfAPreviousExport(t *testing.T) {
+	vm := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+	}
+	kubevirtClient := kubevirtfake.NewSimpleClientset(vm)
+	kubevirtClient.PrependReactor("create", "virtualmachineexports", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		action.(k8stesting.CreateAction).GetObject().(*exportv1.VirtualMachineExport).UID = "export-uid"
+		return false, nil, nil
+	})
+	watcher := watch.NewFakeWithChanSize(1, false)
+	kubevirtClient.PrependWatchReactor("virtualmachineexports", k8stesting.DefaultWatchReactor(watcher, nil))
+	watcher.Modify(&exportv1.VirtualMachineExport{
+		Status: &exportv1.VirtualMachineExportStatus{Phase: exportv1.Ready},
+	})
+	previousSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "base-ubuntu-export-token",
+			Namespace: "packer",
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: "export.kubevirt.io/v1",
+				Kind:       "VirtualMachineExport",
+				Name:       "base-ubuntu",
+				UID:        "previous-export-uid",
+				Controller: ptr.To(true),
+			}},
+		},
+		Data: map[string][]byte{"token": []byte("previous-token")},
+	}
+	kubeClient := k8sfake.NewSimpleClientset(previousSecret)
+
+	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
+	appContext.Put(common.PackerUi, packersdk.TestUi(t))
+	appContext.Put(common.VirtualMachine, vm)
+
+	step := &StepExportVM{Clients: &k8s.Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
+	if action := step.Run(context.Background(), appContext.State); action != multistep.ActionContinue {
+		t.Fatalf("expected the step to continue, got action: %v, error: %v", action, appContext.GetPackerError())
+	}
+
+	secret, err := kubeClient.CoreV1().Secrets("packer").Get(context.Background(), "base-ubuntu-export-token", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get the token secret: %v", err)
+	}
+	token := string(secret.Data["token"])
+	if value, ok := secret.StringData["token"]; ok {
+		// the API server writes StringData over Data
+		token = value
+	}
+	if token != appContext.GetVirtualMachineExportToken() {
+		t.Errorf("expected the secret to hold the token sent by the post-processors, got: %q", token)
+	}
+	if owner := metav1.GetControllerOf(secret); owner == nil || owner.UID != "export-uid" {
+		t.Errorf("expected the secret to be owned by the new export, got: %v", secret.OwnerReferences)
 	}
 }
 
