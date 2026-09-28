@@ -32,7 +32,7 @@ func (s *StepBootCommand) Run(ctx context.Context, state multistep.StateBag) mul
 	vm := appContext.GetVirtualMachine()
 
 	ui.Say(fmt.Sprintf("waiting for Virtual Machine %s/%s to run...", vm.Namespace, vm.Name))
-	err := k8s.WaitForVirtualMachineInstanceRunning(s.Clients.Kubevirt.KubevirtV1().VirtualMachineInstances(vm.Namespace), vm.Name, s.Timeout)
+	err := k8s.WaitForVirtualMachineInstanceRunning(ctx, s.Clients.Kubevirt.KubevirtV1().VirtualMachineInstances(vm.Namespace), vm.Name, s.Timeout)
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("Virtual Machine %s/%s is not running: %s", vm.Namespace, vm.Name, err))
 	}

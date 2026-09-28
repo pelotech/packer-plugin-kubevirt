@@ -17,21 +17,21 @@ type StepDeployVM struct {
 	VmOptions generator.VirtualMachineOptions
 }
 
-func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
+func (s *StepDeployVM) Run(ctx context.Context, state multistep.StateBag) multistep.StepAction {
 	appContext := &common.AppContext{State: state}
 	ui := appContext.GetPackerUi()
 	ns := s.VmOptions.Namespace
 	name := s.VmOptions.Name
 
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
-	_, err := s.Clients.Kubernetes.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
+	_, err := s.Clients.Kubernetes.CoreV1().Namespaces().Create(ctx, namespace, metav1.CreateOptions{})
 	if err != nil && !errors.IsAlreadyExists(err) {
 		return appContext.Halt(fmt.Errorf("failed to create namespace for Virtual Machine %s/%s: %s", ns, name, err))
 	}
 
 	ui.Say(fmt.Sprintf("creating Virtual Machine %s/%s...", ns, name))
 	vm := generator.GenerateVirtualMachine(s.VmOptions)
-	vm, err = s.Clients.Kubevirt.KubevirtV1().VirtualMachines(ns).Create(context.TODO(), vm, metav1.CreateOptions{})
+	vm, err = s.Clients.Kubevirt.KubevirtV1().VirtualMachines(ns).Create(ctx, vm, metav1.CreateOptions{})
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("failed to create Virtual Machine %s/%s: %s", ns, name, err))
 	}
@@ -39,14 +39,14 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 
 	if s.VmOptions.ImageSource.HasS3Credentials() {
 		s3CredentialsSecret := generator.GenerateS3CredentialsSecret(vm, s.VmOptions)
-		_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(context.TODO(), s3CredentialsSecret, metav1.CreateOptions{})
+		_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(ctx, s3CredentialsSecret, metav1.CreateOptions{})
 		if err != nil {
 			return appContext.Halt(fmt.Errorf("failed to create s3 credentials secret for Virtual Machine %s/%s: %s", ns, name, err))
 		}
 	}
 
 	startupScriptSecret := generator.GenerateStartupScriptSecret(vm, s.VmOptions)
-	_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
+	_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(ctx, startupScriptSecret, metav1.CreateOptions{})
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("failed to create startup script secret for Virtual Machine %s/%s: %s", ns, name, err))
 	}

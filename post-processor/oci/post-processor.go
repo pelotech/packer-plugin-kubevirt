@@ -115,7 +115,7 @@ func (p *PostProcessor) findDefaultPreference(source packersdk.Artifact) string 
 	return preference
 }
 
-func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
+func (p *PostProcessor) PostProcess(ctx context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
 	export, token, err := common.GetExport(p.clients, source)
 	if err != nil {
 		return nil, false, false, err
@@ -145,7 +145,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	}
 
 	generateSecret := func(job *batchv1.Job) *corev1.Secret { return common.GenerateOCIUploaderSecret(job, options) }
-	err = common.RunUploadJob(p.clients, ui, "OCI uploader", common.GenerateOCIUploaderJob(export, options), generateSecret, p.config.UploadTimeOut)
+	err = common.RunUploadJob(ctx, p.clients, ui, "OCI uploader", common.GenerateOCIUploaderJob(export, options), generateSecret, p.config.UploadTimeOut)
 	if err != nil {
 		return nil, true, true, err
 	}

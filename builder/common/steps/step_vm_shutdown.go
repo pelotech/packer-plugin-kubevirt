@@ -33,7 +33,7 @@ func (s *StepShutdownVM) Run(ctx context.Context, state multistep.StateBag) mult
 	}()
 	stopped := make(chan error, 1)
 	go func() {
-		stopped <- k8s.WaitForVirtualMachineStopped(s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace), vm.Name, s.ShutdownTimeout)
+		stopped <- k8s.WaitForVirtualMachineStopped(ctx, s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace), vm.Name, s.ShutdownTimeout)
 	}()
 
 	// the connection is lost when the guest shuts down: only a stopped Virtual Machine tells that the command worked

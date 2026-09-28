@@ -20,18 +20,18 @@ type StepGeneralize struct {
 	VmExportTimeOut time.Duration
 }
 
-func (s *StepGeneralize) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
+func (s *StepGeneralize) Run(ctx context.Context, state multistep.StateBag) multistep.StepAction {
 	appContext := &common.AppContext{State: state}
 	ui := appContext.GetPackerUi()
 	vm := appContext.GetVirtualMachine()
 
 	ui.Say(fmt.Sprintf("stopping Virtual Machine for export %s/%s...", vm.Namespace, vm.Name))
-	err := s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace).Stop(context.TODO(), vm.Name, &kubevirtv1.StopOptions{})
+	err := s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace).Stop(ctx, vm.Name, &kubevirtv1.StopOptions{})
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("failed to stop Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
 	}
 
-	err = k8s.WaitForVirtualMachineStopped(s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace), vm.Name, s.VmExportTimeOut)
+	err = k8s.WaitForVirtualMachineStopped(ctx, s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace), vm.Name, s.VmExportTimeOut)
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("failed to stop Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
 	}
@@ -41,12 +41,12 @@ func (s *StepGeneralize) Run(_ context.Context, state multistep.StateBag) multis
 
 		job := generator.GenerateGuestFSJob(vm)
 
-		job, err = s.Clients.Kubernetes.BatchV1().Jobs(vm.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		job, err = s.Clients.Kubernetes.BatchV1().Jobs(vm.Namespace).Create(ctx, job, metav1.CreateOptions{})
 		if err != nil {
 			return appContext.Halt(fmt.Errorf("failed to create 'libguestfs' Job for Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
 		}
 
-		err = k8s.WaitForJobCompletion(s.Clients.Kubernetes, ui, job, s.VmExportTimeOut)
+		err = k8s.WaitForJobCompletion(ctx, s.Clients.Kubernetes, ui, job, s.VmExportTimeOut)
 		if err != nil {
 			return appContext.Halt(fmt.Errorf("error with 'libguestfs' job %s/%s: %s", vm.Namespace, vm.Name, err))
 		}

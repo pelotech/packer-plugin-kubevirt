@@ -7,7 +7,9 @@ import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/apimachinery/pkg/util/httpstream/spdy"
 	"k8s.io/apimachinery/pkg/watch"
@@ -23,11 +25,18 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestMain(m *testing.M) {
+	// the KubeVirt and CDI fakes do not serve the streaming lists that client-go asks for by default
+	_ = os.Setenv("KUBE_FEATURE_WatchListClient", "false")
+	os.Exit(m.Run())
+}
 
 func newJobWithPod(containerState corev1.ContainerState) (*batchv1.Job, *corev1.Pod) {
 	job := &batchv1.Job{
@@ -63,7 +72,7 @@ func TestWaitForJobCompletionSucceeds(t *testing.T) {
 	}
 	go watcher.Modify(completedJob)
 
-	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 5*time.Second)
+	err := WaitForJobCompletion(context.Background(), client, packersdk.TestUi(t), job, 5*time.Second)
 	if err != nil {
 		t.Fatalf("expected job to complete, got: %v", err)
 	}
@@ -75,7 +84,7 @@ func TestWaitForJobCompletionTimeoutReportsPodState(t *testing.T) {
 	})
 	client := fake.NewSimpleClientset(job, pod)
 
-	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 50*time.Millisecond)
+	err := WaitForJobCompletion(context.Background(), client, packersdk.TestUi(t), job, 50*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected a timeout error")
 	}
@@ -100,7 +109,7 @@ func TestWaitForJobCompletionFailureReportsPodState(t *testing.T) {
 	}
 	go watcher.Modify(failedJob)
 
-	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 5*time.Second)
+	err := WaitForJobCompletion(context.Background(), client, packersdk.TestUi(t), job, 5*time.Second)
 	if err == nil {
 		t.Fatal("expected a failure error")
 	}
@@ -121,7 +130,7 @@ func TestWaitForJobCompletionReportsLatestPodOnly(t *testing.T) {
 	latestPod.CreationTimestamp = metav1.Now()
 	client := fake.NewSimpleClientset(job, firstPod, latestPod)
 
-	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 50*time.Millisecond)
+	err := WaitForJobCompletion(context.Background(), client, packersdk.TestUi(t), job, 50*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected a timeout error")
 	}
@@ -130,16 +139,65 @@ func TestWaitForJobCompletionReportsLatestPodOnly(t *testing.T) {
 	}
 }
 
-func TestWaitForJobCompletionClosedWatch(t *testing.T) {
+// closeFirstWatch runs change, then closes the first watch at once, as the API server does after 30 to 60 minutes
+func closeFirstWatch(client *k8stesting.Fake, resource string, change func()) {
+	var watches atomic.Int32
+	client.PrependWatchReactor(resource, func(k8stesting.Action) (bool, watch.Interface, error) {
+		if watches.Add(1) > 1 {
+			return false, nil, nil
+		}
+		change()
+		closedWatch := watch.NewFake()
+		closedWatch.Stop()
+		return true, closedWatch, nil
+	})
+}
+
+func TestWaitForJobCompletionOutlivesAClosedWatch(t *testing.T) {
+	job, pod := newJobWithPod(corev1.ContainerState{})
+	client := fake.NewSimpleClientset(job, pod)
+	completedJob := job.DeepCopy()
+	completedJob.Status.Conditions = []batchv1.JobCondition{
+		{Type: batchv1.JobComplete, Status: corev1.ConditionTrue},
+	}
+	closeFirstWatch(&client.Fake, "jobs", func() {
+		_ = client.Tracker().Update(batchv1.SchemeGroupVersion.WithResource("jobs"), completedJob, job.Namespace)
+	})
+
+	err := WaitForJobCompletion(context.Background(), client, packersdk.TestUi(t), job, 5*time.Second)
+	if err != nil {
+		t.Fatalf("expected the job to be seen as completed once watched again, got: %v", err)
+	}
+}
+
+func TestWaitForJobCompletionReportsAJobThatCannotBeListed(t *testing.T) {
 	job, _ := newJobWithPod(corev1.ContainerState{})
 	client := fake.NewSimpleClientset(job)
-	watcher := watch.NewFake()
-	client.PrependWatchReactor("jobs", k8stesting.DefaultWatchReactor(watcher, nil))
-	watcher.Stop()
+	forbidden := k8serrors.NewForbidden(batchv1.Resource("jobs"), "", errors.New("cannot list resource \"jobs\""))
+	client.PrependReactor("list", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, forbidden
+	})
 
-	err := WaitForJobCompletion(client, packersdk.TestUi(t), job, 5*time.Second)
-	if err == nil {
-		t.Fatal("expected an error when the watch is closed before the job completes")
+	err := WaitForJobCompletion(context.Background(), client, packersdk.TestUi(t), job, 5*time.Second)
+	if !errors.Is(err, forbidden) {
+		t.Errorf("expected the error of the list instead of waiting for the timeout, got: %v", err)
+	}
+}
+
+func TestWaitForJobCompletionStopsWhenCancelled(t *testing.T) {
+	job, pod := newJobWithPod(corev1.ContainerState{})
+	client := fake.NewSimpleClientset(job, pod)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(100*time.Millisecond, cancel)
+
+	started := time.Now()
+	err := WaitForJobCompletion(ctx, client, packersdk.TestUi(t), job, 10*time.Second)
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Errorf("expected the wait to stop once cancelled, waited: %s", elapsed)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected an error saying the wait was cancelled, got: %v", err)
 	}
 }
 
@@ -150,7 +208,7 @@ func TestWaitForVirtualMachineStopped(t *testing.T) {
 	}
 	client := kubevirtfake.NewSimpleClientset(vm).KubevirtV1().VirtualMachines(vm.Namespace)
 
-	err := WaitForVirtualMachineStopped(client, vm.Name, 50*time.Millisecond)
+	err := WaitForVirtualMachineStopped(context.Background(), client, vm.Name, 50*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected a timeout while the Virtual Machine is still stopping")
 	}
@@ -160,7 +218,7 @@ func TestWaitForVirtualMachineStopped(t *testing.T) {
 		t.Fatalf("failed to update Virtual Machine status: %v", err)
 	}
 
-	err = WaitForVirtualMachineStopped(client, vm.Name, 5*time.Second)
+	err = WaitForVirtualMachineStopped(context.Background(), client, vm.Name, 5*time.Second)
 	if err != nil {
 		t.Fatalf("expected Virtual Machine to be seen as stopped, got: %v", err)
 	}
@@ -176,7 +234,7 @@ func TestWaitForJobCompletionReportsConditionsOfPendingPodsOnly(t *testing.T) {
 
 	job, pendingPod := newJobWithPod(corev1.ContainerState{})
 	pendingPod.Status.Conditions = []corev1.PodCondition{unschedulable}
-	err := WaitForJobCompletion(fake.NewSimpleClientset(job, pendingPod), packersdk.TestUi(t), job, 50*time.Millisecond)
+	err := WaitForJobCompletion(context.Background(), fake.NewSimpleClientset(job, pendingPod), packersdk.TestUi(t), job, 50*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), unschedulable.Message) {
 		t.Errorf("expected error to explain why the pod is pending, got: %v", err)
 	}
@@ -186,7 +244,7 @@ func TestWaitForJobCompletionReportsConditionsOfPendingPodsOnly(t *testing.T) {
 	})
 	failedPod.Status.Phase = corev1.PodFailed
 	failedPod.Status.Conditions = []corev1.PodCondition{unschedulable}
-	err = WaitForJobCompletion(fake.NewSimpleClientset(job, failedPod), packersdk.TestUi(t), job, 50*time.Millisecond)
+	err = WaitForJobCompletion(context.Background(), fake.NewSimpleClientset(job, failedPod), packersdk.TestUi(t), job, 50*time.Millisecond)
 	if err == nil || strings.Contains(err.Error(), unschedulable.Message) {
 		t.Errorf("expected error to leave out the conditions of a pod that ran, got: %v", err)
 	}
@@ -361,7 +419,7 @@ func TestWaitForDataVolumeImportSucceeds(t *testing.T) {
 	}()
 
 	clients := &Clients{Kubernetes: fake.NewSimpleClientset(), CDI: cdiClient}
-	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
+	err := WaitForDataVolumeImport(context.Background(), clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
 	if err != nil {
 		t.Fatalf("expected the import to succeed, got: %v", err)
 	}
@@ -378,7 +436,7 @@ func TestWaitForDataVolumeImportFailureReportsImporterPod(t *testing.T) {
 	kubeClient := fake.NewSimpleClientset(pod, claim)
 
 	clients := &Clients{Kubernetes: kubeClient, CDI: cdiClient}
-	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
+	err := WaitForDataVolumeImport(context.Background(), clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
 	if err == nil {
 		t.Fatal("expected a failure error")
 	}
@@ -401,7 +459,7 @@ func TestWaitForDataVolumeImportTimeoutReportsImporterPodOfPopulator(t *testing.
 	kubeClient := fake.NewSimpleClientset(pod, claim, populatorClaim)
 
 	clients := &Clients{Kubernetes: kubeClient, CDI: cdiClient}
-	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 50*time.Millisecond)
+	err := WaitForDataVolumeImport(context.Background(), clients, packersdk.TestUi(t), dataVolume, 50*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected a timeout error")
 	}
@@ -417,7 +475,7 @@ func TestWaitForDataVolumeImportTimeoutWithoutImporterPod(t *testing.T) {
 	dataVolume.Status.ClaimName = ""
 	clients := &Clients{Kubernetes: fake.NewSimpleClientset(), CDI: cdifake.NewSimpleClientset(dataVolume)}
 
-	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 50*time.Millisecond)
+	err := WaitForDataVolumeImport(context.Background(), clients, packersdk.TestUi(t), dataVolume, 50*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected a timeout error")
 	}
@@ -428,16 +486,16 @@ func TestWaitForDataVolumeImportTimeoutWithoutImporterPod(t *testing.T) {
 	}
 }
 
-func TestWaitForDataVolumeImportClosedWatch(t *testing.T) {
+func TestWaitForDataVolumeImportOutlivesAClosedWatch(t *testing.T) {
 	dataVolume := newDataVolume(cdiv1beta1.ImportInProgress)
 	cdiClient := cdifake.NewSimpleClientset(dataVolume)
-	watcher := watch.NewFake()
-	cdiClient.PrependWatchReactor("datavolumes", k8stesting.DefaultWatchReactor(watcher, nil))
-	watcher.Stop()
+	closeFirstWatch(&cdiClient.Fake, "datavolumes", func() {
+		_ = cdiClient.Tracker().Update(cdiv1beta1.SchemeGroupVersion.WithResource("datavolumes"), newDataVolume(cdiv1beta1.Succeeded), dataVolume.Namespace)
+	})
 
 	clients := &Clients{Kubernetes: fake.NewSimpleClientset(), CDI: cdiClient}
-	err := WaitForDataVolumeImport(clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
-	if err == nil {
-		t.Fatal("expected an error when the watch is closed before the import is done")
+	err := WaitForDataVolumeImport(context.Background(), clients, packersdk.TestUi(t), dataVolume, 5*time.Second)
+	if err != nil {
+		t.Fatalf("expected the import to be seen as done once watched again, got: %v", err)
 	}
 }

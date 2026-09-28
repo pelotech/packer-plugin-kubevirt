@@ -17,13 +17,21 @@ import (
 	exportv1 "kubevirt.io/api/export/v1"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
 	"net/http"
+	"os"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestMain(m *testing.M) {
+	// the KubeVirt fake does not serve the streaming lists that client-go asks for by default
+	_ = os.Setenv("KUBE_FEATURE_WatchListClient", "false")
+	os.Exit(m.Run())
+}
 
 func TestStepExportVMOnlyExports(t *testing.T) {
 	vm := &kubevirtv1.VirtualMachine{
@@ -79,26 +87,61 @@ func TestWaitForExportReadyIgnoresExportWithoutStatus(t *testing.T) {
 	}()
 
 	step := &StepExportVM{Clients: &k8s.Clients{Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
-	err := step.waitForExportReady(packersdk.TestUi(t), export)
+	err := step.waitForExportReady(context.Background(), packersdk.TestUi(t), export)
 	if err != nil {
 		t.Fatalf("expected the Virtual Machine Export to be ready, got: %v", err)
 	}
 }
 
-func TestWaitForExportReadyClosedWatch(t *testing.T) {
+func TestWaitForExportReadyOutlivesAClosedWatch(t *testing.T) {
 	export := &exportv1.VirtualMachineExport{
 		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
 	}
+	readyExport := export.DeepCopy()
+	readyExport.Status = &exportv1.VirtualMachineExportStatus{Phase: exportv1.Ready}
 
-	kubevirtClient := kubevirtfake.NewSimpleClientset()
-	watcher := watch.NewFake()
-	kubevirtClient.PrependWatchReactor("virtualmachineexports", k8stesting.DefaultWatchReactor(watcher, nil))
-	watcher.Stop()
+	kubevirtClient := kubevirtfake.NewSimpleClientset(export)
+	// the API server closes every watch after 30 to 60 minutes
+	var watches atomic.Int32
+	kubevirtClient.PrependWatchReactor("virtualmachineexports", func(k8stesting.Action) (bool, watch.Interface, error) {
+		if watches.Add(1) > 1 {
+			return false, nil, nil
+		}
+		_ = kubevirtClient.Tracker().Update(exportv1.SchemeGroupVersion.WithResource("virtualmachineexports"), readyExport, export.Namespace)
+		closedWatch := watch.NewFake()
+		closedWatch.Stop()
+		return true, closedWatch, nil
+	})
 
 	step := &StepExportVM{Clients: &k8s.Clients{Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
-	err := step.waitForExportReady(packersdk.TestUi(t), export)
-	if err == nil {
-		t.Fatal("expected an error when the watch is closed before the Virtual Machine Export is ready")
+	err := step.waitForExportReady(context.Background(), packersdk.TestUi(t), export)
+	if err != nil {
+		t.Fatalf("expected the Virtual Machine Export to be seen as ready once watched again, got: %v", err)
+	}
+}
+
+func TestStepExportVMStopsWaitingWhenCancelled(t *testing.T) {
+	vm := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+	}
+	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
+	appContext.Put(common.PackerUi, packersdk.TestUi(t))
+	appContext.Put(common.VirtualMachine, vm)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(100*time.Millisecond, cancel)
+
+	// the export never gets ready
+	step := &StepExportVM{Clients: &k8s.Clients{Kubernetes: k8sfake.NewSimpleClientset(), Kubevirt: kubevirtfake.NewSimpleClientset(vm)}, VmExportTimeOut: 10 * time.Second}
+	started := time.Now()
+	if action := step.Run(ctx, appContext.State); action != multistep.ActionHalt {
+		t.Fatalf("expected the step to halt, got action: %v", action)
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Errorf("expected the step to stop once cancelled, waited: %s", elapsed)
+	}
+	if err := appContext.GetPackerError(); err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+		t.Errorf("expected an error saying the build was cancelled, got: %v", err)
 	}
 }
 
@@ -118,14 +161,14 @@ func TestExportIsCreatedAndWatchedWithV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected the Virtual Machine Export to be created, got: %v", err)
 	}
-	err = step.waitForExportReady(packersdk.TestUi(t), export)
+	err = step.waitForExportReady(context.Background(), packersdk.TestUi(t), export)
 	if err != nil {
 		t.Fatalf("expected the Virtual Machine Export to be ready, got: %v", err)
 	}
 
 	actions := kubevirtClient.Actions()
-	if len(actions) != 2 {
-		t.Fatalf("expected a creation and a watch, got: %v", actions)
+	if len(actions) != 3 {
+		t.Fatalf("expected a creation, a list and a watch, got: %v", actions)
 	}
 	expectedResource := schema.GroupVersionResource{Group: "export.kubevirt.io", Version: "v1", Resource: "virtualmachineexports"}
 	for _, action := range actions {
