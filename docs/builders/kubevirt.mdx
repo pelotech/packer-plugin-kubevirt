@@ -55,6 +55,7 @@ A preference containing `windows` selects the Windows installation flow, any oth
 Defaults to no node selector
 
 - `kubernetes_tolerations` ([]map[string]string) - Kubernetes tolerations resources should support to get eligible to the desired node
+Each toleration takes the fields of a Kubernetes toleration: `key`, `operator`, `value`, `effect` and `tolerationSeconds`
 Defaults to no toleration
 
 - `source_aws_access_key_id` (string) - AWS Access Key ID for S3 bucket containing VM images. Keys of an IAM user: temporary credentials are not supported, use a presigned URL as `source_url` instead
