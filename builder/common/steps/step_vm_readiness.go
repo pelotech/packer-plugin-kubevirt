@@ -58,22 +58,17 @@ func (s *StepWaitForVM) waitForVirtualMachine(ui packer.Ui, vm *kubevirtv1.Virtu
 		if !ok {
 			return false, fmt.Errorf("unexpected type for %v", event.Object)
 		}
-		for index, condition := range vm.Status.Conditions {
-			if condition.Type == kubevirtv1.VirtualMachineReady && condition.Status == corev1.ConditionTrue {
-				return true, nil
-			} else if index == len(vm.Status.Conditions)-1 {
-				ui.Message(fmt.Sprintf("condition '%s' is '%s'", condition.Type, condition.Status))
-				ui.Message(fmt.Sprintf("message: %s", condition.Message))
-			}
+		if isReady(vm) {
+			return true, nil
+		}
+		if conditions := vm.Status.Conditions; len(conditions) > 0 {
+			last := conditions[len(conditions)-1]
+			ui.Message(fmt.Sprintf("condition '%s' is '%s'", last.Type, last.Status))
+			ui.Message(fmt.Sprintf("message: %s", last.Message))
 		}
 		return false, nil
 	}
-	err := k8s.WaitForResource(s.Clients.Kubevirt.KubevirtV1().RESTClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmInstallTimeOut, watchFunc)
-	if err != nil {
-		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", vm.Namespace, vm.Name, err)
-	}
-
-	return nil
+	return k8s.WaitForResource(s.Clients.Kubevirt.KubevirtV1().RESTClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmInstallTimeOut, watchFunc)
 }
 
 func (s *StepWaitForVM) Cleanup(_ multistep.StateBag) {}

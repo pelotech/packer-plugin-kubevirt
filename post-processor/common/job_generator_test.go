@@ -100,8 +100,8 @@ func TestGenerateS3UploaderJobWithStaticCredentials(t *testing.T) {
 	opts := S3UploaderOptions{
 		Name:               "base-ubuntu",
 		Namespace:          "packer",
-		AWSAccessKeyId:     &accessKeyId,
-		AWSSecretAccessKey: &secretAccessKey,
+		AWSAccessKeyId:     accessKeyId,
+		AWSSecretAccessKey: secretAccessKey,
 	}
 
 	job := GenerateS3UploaderJob(newExport(), opts)
@@ -120,7 +120,7 @@ func TestGenerateS3UploaderJobWithServiceAccount(t *testing.T) {
 	opts := S3UploaderOptions{
 		Name:               "base-ubuntu",
 		Namespace:          "packer",
-		ServiceAccountName: &serviceAccountName,
+		ServiceAccountName: serviceAccountName,
 	}
 
 	job := GenerateS3UploaderJob(newExport(), opts)
@@ -159,7 +159,7 @@ func TestGenerateS3UploaderJobWithoutImageFormat(t *testing.T) {
 	opts := S3UploaderOptions{
 		Name:               "base-ubuntu",
 		Namespace:          "packer",
-		ServiceAccountName: &serviceAccountName,
+		ServiceAccountName: serviceAccountName,
 		S3BucketName:       "images",
 		S3KeyPrefix:        "exports",
 	}
@@ -182,7 +182,7 @@ func TestGenerateS3UploaderJobWithImageFormat(t *testing.T) {
 	opts := S3UploaderOptions{
 		Name:               "base-ubuntu",
 		Namespace:          "packer",
-		ServiceAccountName: &serviceAccountName,
+		ServiceAccountName: serviceAccountName,
 		S3BucketName:       "images",
 		S3KeyPrefix:        "exports",
 		ImageFormat:        "qcow2",
@@ -197,7 +197,8 @@ func TestGenerateS3UploaderJobWithImageFormat(t *testing.T) {
 	if download := strings.Join(podSpec.InitContainers[0].Command, " "); !strings.Contains(download, "| dd of=/tmp/base-ubuntu.img conv=sparse") {
 		t.Errorf("expected the raw image to be downloaded as a sparse file, got: %s", download)
 	}
-	expectedConvert := "qemu-img convert -f raw -O qcow2 /tmp/base-ubuntu.img /tmp/base-ubuntu.qcow2"
+	// the raw image is removed once converted, to leave its space to the upload
+	expectedConvert := "/bin/sh -c qemu-img convert -f raw -O qcow2 /tmp/base-ubuntu.img /tmp/base-ubuntu.qcow2 && rm /tmp/base-ubuntu.img"
 	if convert := strings.Join(podSpec.InitContainers[1].Command, " "); convert != expectedConvert {
 		t.Errorf("expected convert command '%s', got: '%s'", expectedConvert, convert)
 	}

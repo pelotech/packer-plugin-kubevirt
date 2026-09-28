@@ -1,20 +1,21 @@
 package generator
 
 import (
-	"embed"
+	_ "embed"
 	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
-	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/vm"
-	"path"
 )
 
-//go:embed scripts/*
-var scripts embed.FS
+//go:embed scripts/cloud-init.yaml
+var defaultCloudInit string
+
+//go:embed scripts/autounattend.xml
+var defaultAutounattend string
 
 const (
 	defaultNetworkName = "default"
@@ -34,12 +35,6 @@ type VirtualMachineOptions struct {
 	Memory           string
 	ImageSource      ImageSource
 	UserProvisioning UserProvisioning
-	Credentials      *AccessCredentials
-}
-
-type AccessCredentials struct {
-	Username string
-	Password string
 }
 
 type ImageSource struct {
@@ -61,7 +56,6 @@ type SecretSuffix string
 
 const (
 	StartupScriptSecretSuffix SecretSuffix = "startup-scripts"
-	UserCredentialsSuffix     SecretSuffix = "user-credentials"
 	S3CredentialsSuffix       SecretSuffix = "s3-credentials"
 )
 
@@ -114,17 +108,13 @@ func buildProbeExecCommand(family vm.OsFamily) []string {
 	return command
 }
 
-func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) (*corev1.Secret, error) {
-	key, filename, script := "userData", "cloud-init.yaml", opts.UserProvisioning.CloudInit
+func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
+	key, script, defaultScript := "userData", opts.UserProvisioning.CloudInit, defaultCloudInit
 	if opts.OsFamily == vm.Windows {
-		key, filename, script = "autounattend.xml", "autounattend.xml", opts.UserProvisioning.Autounattend
+		key, script, defaultScript = "autounattend.xml", opts.UserProvisioning.Autounattend, defaultAutounattend
 	}
 	if script == "" {
-		rawData, err := scripts.ReadFile(path.Join("scripts", filename))
-		if err != nil {
-			return nil, fmt.Errorf("failed to read startup script file: %s", err)
-		}
-		script = string(rawData)
+		script = defaultScript
 	}
 
 	return &corev1.Secret{
@@ -137,7 +127,7 @@ func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts
 		},
 		StringData: map[string]string{key: script},
 		Type:       corev1.SecretTypeOpaque,
-	}, nil
+	}
 }
 
 func GenerateS3CredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
@@ -157,39 +147,11 @@ func GenerateS3CredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMach
 	}
 }
 
-func GenerateUserCredentialsSecret(vm *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) *corev1.Secret {
-	password := opts.Credentials.Password
-	if opts.Credentials.Password == "" {
-		password = common.GenerateRandomPassword(20)
-	}
-	data := map[string]string{
-		opts.Credentials.Username: password,
-	}
-
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      buildSecretName(opts.Name, UserCredentialsSuffix),
-			Namespace: opts.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(vm, kubevirtv1.VirtualMachineGroupVersionKind),
-			},
-		},
-		StringData: data,
-		Type:       corev1.SecretTypeOpaque,
-	}
-}
-
 func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachine {
 	runStrategy := kubevirtv1.RunStrategyOnce
 	disks := generateDisks(opts.OsFamily)
 	volumes := generateVolumes(opts)
 	probeExecCommand := buildProbeExecCommand(opts.OsFamily)
-
-	var accessCredentials []kubevirtv1.AccessCredential
-	if opts.Credentials != nil {
-		secretName := buildSecretName(opts.Name, UserCredentialsSuffix)
-		accessCredentials = append(accessCredentials, generateUserPasswordAccessCredential(secretName))
-	}
 
 	var dataVolumeSource cdiv1beta1.DataVolumeSource
 	if opts.ImageSource.HasS3Credentials() {
@@ -233,7 +195,6 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 						InitialDelaySeconds: 30,
 						PeriodSeconds:       10,
 					},
-					AccessCredentials: accessCredentials,
 					Domain: kubevirtv1.DomainSpec{
 						Resources: kubevirtv1.ResourceRequirements{
 							Requests: corev1.ResourceList{
@@ -271,75 +232,39 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 }
 
 func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSize string) []kubevirtv1.DataVolumeTemplateSpec {
-	primaryDiskSource := dvSource
-	if family == vm.Windows {
-		// Disk empty and used as target by Windows install
-		primaryDiskSource = cdiv1beta1.DataVolumeSource{Blank: &cdiv1beta1.DataVolumeBlankImage{}}
+	if family != vm.Windows {
+		return []kubevirtv1.DataVolumeTemplateSpec{
+			dataVolumeTemplate(BuildDataVolumeName(vmName, SourceDataVolumeSuffix), vmPrimaryDiskSize, dvSource),
+		}
 	}
-	templates := []kubevirtv1.DataVolumeTemplateSpec{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: BuildDataVolumeName(vmName, SourceDataVolumeSuffix),
-			},
-			Spec: cdiv1beta1.DataVolumeSpec{
-				PVC: &corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{
-						corev1.ReadWriteOnce,
-					},
-					Resources: corev1.VolumeResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSize),
-						},
+
+	return []kubevirtv1.DataVolumeTemplateSpec{
+		// Disk empty and used as target by Windows install
+		dataVolumeTemplate(BuildDataVolumeName(vmName, SourceDataVolumeSuffix), vmPrimaryDiskSize, cdiv1beta1.DataVolumeSource{Blank: &cdiv1beta1.DataVolumeBlankImage{}}),
+		dataVolumeTemplate(BuildDataVolumeName(vmName, InstallMediaDataVolumeSuffix), vmPrimaryDiskSize, dvSource),
+		dataVolumeTemplate(BuildDataVolumeName(vmName, VirtioDataVolumeSuffix), "1Gi", cdiv1beta1.DataVolumeSource{HTTP: &cdiv1beta1.DataVolumeSourceHTTP{URL: virtioDriversURL}}),
+	}
+}
+
+func dataVolumeTemplate(name, size string, source cdiv1beta1.DataVolumeSource) kubevirtv1.DataVolumeTemplateSpec {
+	return kubevirtv1.DataVolumeTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: cdiv1beta1.DataVolumeSpec{
+			PVC: &corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{
+					corev1.ReadWriteOnce,
+				},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse(size),
 					},
 				},
-				Source: &primaryDiskSource,
 			},
+			Source: &source,
 		},
 	}
-
-	if family == vm.Windows {
-		templates = append(templates, kubevirtv1.DataVolumeTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: BuildDataVolumeName(vmName, InstallMediaDataVolumeSuffix),
-			},
-			Spec: cdiv1beta1.DataVolumeSpec{
-				PVC: &corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{
-						corev1.ReadWriteOnce,
-					},
-					Resources: corev1.VolumeResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSize),
-						},
-					},
-				},
-				Source: &dvSource,
-			},
-		}, kubevirtv1.DataVolumeTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: BuildDataVolumeName(vmName, VirtioDataVolumeSuffix),
-			},
-			Spec: cdiv1beta1.DataVolumeSpec{
-				PVC: &corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{
-						corev1.ReadWriteOnce,
-					},
-					Resources: corev1.VolumeResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse("1Gi"),
-						},
-					},
-				},
-				Source: &cdiv1beta1.DataVolumeSource{
-					HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
-						URL: virtioDriversURL,
-					},
-				},
-			},
-		})
-	}
-
-	return templates
 }
 
 /*
@@ -483,19 +408,4 @@ func generateVolumes(opts VirtualMachineOptions) []kubevirtv1.Volume {
 	}
 
 	return volumes
-}
-
-func generateUserPasswordAccessCredential(secretName string) kubevirtv1.AccessCredential {
-	return kubevirtv1.AccessCredential{
-		UserPassword: &kubevirtv1.UserPasswordAccessCredential{
-			Source: kubevirtv1.UserPasswordAccessCredentialSource{
-				Secret: &kubevirtv1.AccessCredentialSecretSource{
-					SecretName: secretName,
-				},
-			},
-			PropagationMethod: kubevirtv1.UserPasswordAccessCredentialPropagationMethod{
-				QemuGuestAgent: &kubevirtv1.QemuGuestAgentUserPasswordAccessCredentialPropagation{},
-			},
-		},
-	}
 }

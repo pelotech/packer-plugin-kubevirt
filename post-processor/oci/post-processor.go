@@ -10,7 +10,8 @@ import (
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/post-processor/common"
@@ -115,19 +116,15 @@ func (p *PostProcessor) findDefaultPreference(source packersdk.Artifact) string 
 }
 
 func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
-	ns := source.State(buildercommon.NamespaceArtifactKey).(string)
-	name := source.State(buildercommon.VirtualMachineExportNameArtifactKey).(string)
-	token := source.State(buildercommon.VirtualMachineExportTokenArtifactKey).(string)
-
-	export, err := p.clients.Kubevirt.ExportV1().VirtualMachineExports(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	export, token, err := common.GetExport(p.clients, source)
 	if err != nil {
-		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
+		return nil, false, false, err
 	}
-	defer common.DeleteOrKeepExport(p.clients, ui, ns, name, p.config.KeepExport)
+	defer common.DeleteOrKeepExport(p.clients, ui, export.Namespace, export.Name, p.config.KeepExport)
 
 	exportServerUrl := common.FindVolumeUrl(export, p.config.ImageFormat)
 	if exportServerUrl == "" {
-		return nil, true, true, fmt.Errorf("failed to get the desired volume URL from Virtual Machine Export %s/%s: %v", ns, name, export.Status)
+		return nil, true, true, fmt.Errorf("failed to get the desired volume URL from Virtual Machine Export %s/%s: %v", export.Namespace, export.Name, export.Status)
 	}
 
 	options := common.OCIUploaderOptions{
@@ -147,21 +144,10 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		DefaultInstanceType:     p.config.DefaultInstanceType,
 	}
 
-	job := common.GenerateOCIUploaderJob(export, options)
-	job, err = p.clients.Kubernetes.BatchV1().Jobs(export.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	generateSecret := func(job *batchv1.Job) *corev1.Secret { return common.GenerateOCIUploaderSecret(job, options) }
+	err = common.RunUploadJob(p.clients, ui, "OCI uploader", common.GenerateOCIUploaderJob(export, options), generateSecret, p.config.UploadTimeOut)
 	if err != nil {
-		return nil, true, true, fmt.Errorf("failed to deploy OCI uploader job: %w", err)
-	}
-
-	secret := common.GenerateOCIUploaderSecret(job, options)
-	_, err = p.clients.Kubernetes.CoreV1().Secrets(export.Namespace).Create(context.Background(), secret, metav1.CreateOptions{})
-	if err != nil {
-		return nil, true, true, fmt.Errorf("failed to create OCI uploader secret: %w", err)
-	}
-
-	err = k8s.WaitForJobCompletion(p.clients.Kubernetes, ui, job, p.config.UploadTimeOut)
-	if err != nil {
-		return nil, true, true, fmt.Errorf("error with 'OCI uploader' job: %w", err)
+		return nil, true, true, err
 	}
 
 	return source, true, true, nil

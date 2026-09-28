@@ -6,9 +6,7 @@ import (
 	"fmt"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	exportv1 "kubevirt.io/api/export/v1"
-	"packer-plugin-kubevirt/builder/common/k8s"
 	"path"
 	"strings"
 )
@@ -73,10 +71,7 @@ func findRegistry(image string) string {
 }
 
 func GenerateOCIUploaderSecret(job *batchv1.Job, opts OCIUploaderOptions) *corev1.Secret {
-	stringData := map[string]string{
-		exportTokenEnvVar:   opts.ExportServerToken,
-		exportServerPEMCert: opts.ExportServerCertificate,
-	}
+	stringData := map[string]string{}
 	if opts.RegistryUsername != "" && opts.RegistryPassword != "" {
 		credentials := fmt.Sprintf("%s:%s", opts.RegistryUsername, opts.RegistryPassword)
 		dockerConfig, _ := json.Marshal(map[string]interface{}{
@@ -89,16 +84,7 @@ func GenerateOCIUploaderSecret(job *batchv1.Job, opts OCIUploaderOptions) *corev
 		stringData[corev1.DockerConfigJsonKey] = string(dockerConfig)
 	}
 
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      job.Name,
-			Namespace: opts.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job")),
-			},
-		},
-		StringData: stringData,
-	}
+	return generateUploaderSecret(job, opts.ExportServerToken, opts.ExportServerCertificate, stringData)
 }
 
 func generateImageConfig(opts OCIUploaderOptions) string {
@@ -149,7 +135,7 @@ func generateConvertScript(opts OCIUploaderOptions, downloadedFilename string) s
 }
 
 func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploaderOptions) *batchv1.Job {
-	downloadedFilename := fmt.Sprintf("%s.img", opts.Name)
+	downloaded := downloadedFilename(opts.Name, opts.ImageFormat)
 	// its secret has the same name
 	jobName := buildJobName("oci-uploader", opts.Name)
 
@@ -158,34 +144,8 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 		pushCommand = append(pushCommand, "--insecure")
 	}
 
-	volumes := []corev1.Volume{
-		{
-			Name: tempVolumeMountVolumeMapping,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
-		},
-		{
-			Name: certVolumeMountVolumeMapping,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: jobName,
-					Items: []corev1.KeyToPath{
-						{
-							Key:  exportServerPEMCert,
-							Path: exportServerPEMCert,
-						},
-					},
-				},
-			},
-		},
-	}
-	pushVolumeMounts := []corev1.VolumeMount{
-		{
-			Name:      tempVolumeMountVolumeMapping,
-			MountPath: tempVolumeMountPath,
-		},
-	}
+	var dockerConfigVolumes []corev1.Volume
+	pushVolumeMounts := []corev1.VolumeMount{tempVolumeMount}
 	var pushEnv []corev1.EnvVar
 
 	dockerConfigSecretName := opts.RegistrySecretName
@@ -193,7 +153,7 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 		dockerConfigSecretName = jobName
 	}
 	if dockerConfigSecretName != "" {
-		volumes = append(volumes, corev1.Volume{
+		dockerConfigVolumes = append(dockerConfigVolumes, corev1.Volume{
 			Name: dockerConfigVolumeMountVolumeMapping,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
@@ -217,38 +177,20 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 		})
 	}
 
-	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: opts.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),
-			},
-		},
-		Spec: batchv1.JobSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					ServiceAccountName: opts.ServiceAccountName,
-					InitContainers: []corev1.Container{
-						generateDownloadContainer(jobName, downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
-						generateConvertContainer(
-							[]string{"/bin/sh", "-c", generateConvertScript(opts, downloadedFilename)},
-							[]corev1.EnvVar{{Name: imageConfigEnvVar, Value: generateImageConfig(opts)}},
-						),
-					},
-					Containers: []corev1.Container{
-						{
-							Name:         "push",
-							Image:        pushImage,
-							Command:      pushCommand,
-							Env:          pushEnv,
-							VolumeMounts: pushVolumeMounts,
-						},
-					},
-					Volumes:       volumes,
-					RestartPolicy: corev1.RestartPolicyNever,
-				},
-			},
-		},
+	initContainers := []corev1.Container{
+		generateDownloadContainer(jobName, downloaded, opts.ExportServerUrl, opts.ImageFormat != ""),
+		generateConvertContainer(
+			[]string{"/bin/sh", "-c", generateConvertScript(opts, downloaded)},
+			[]corev1.EnvVar{{Name: imageConfigEnvVar, Value: generateImageConfig(opts)}},
+		),
 	}
+	push := corev1.Container{
+		Name:         "push",
+		Image:        pushImage,
+		Command:      pushCommand,
+		Env:          pushEnv,
+		VolumeMounts: pushVolumeMounts,
+	}
+
+	return generateUploaderJob(export, jobName, opts.Namespace, opts.ServiceAccountName, initContainers, []corev1.Container{push}, dockerConfigVolumes...)
 }

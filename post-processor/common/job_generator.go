@@ -10,7 +10,6 @@ import (
 	exportv1 "kubevirt.io/api/export/v1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
-	"packer-plugin-kubevirt/builder/common/steps"
 	"path"
 	"slices"
 	"strings"
@@ -22,6 +21,7 @@ const (
 	tempVolumeMountVolumeMapping = "temp"
 	tempVolumeMountPath          = "/tmp"
 	exportTokenEnvVar            = "EXPORT_TOKEN"
+	exportTokenHeader            = "x-kubevirt-export-token"
 	exportServerPEMCert          = "cert.pem"
 	qemuImgImage                 = "quay.io/kubevirt/cdi-importer:v1.66.1"
 	// the job name ends up in a label of its pods
@@ -31,10 +31,15 @@ const (
 
 var supportedImageFormats = []string{"qcow2", "vmdk", "vhdx", "vdi"}
 
+var tempVolumeMount = corev1.VolumeMount{
+	Name:      tempVolumeMountVolumeMapping,
+	MountPath: tempVolumeMountPath,
+}
+
 type S3UploaderOptions struct {
 	Name               string
 	Namespace          string
-	ServiceAccountName *string
+	ServiceAccountName string
 
 	ExportServerUrl         string
 	ExportServerToken       string
@@ -44,8 +49,8 @@ type S3UploaderOptions struct {
 	S3KeyPrefix  string
 	ObjectName   string
 
-	AWSAccessKeyId     *string
-	AWSSecretAccessKey *string
+	AWSAccessKeyId     string
+	AWSSecretAccessKey string
 	AWSRegion          string
 	S3EndpointUrl      string
 
@@ -81,29 +86,90 @@ func FindVolumeUrl(export *exportv1.VirtualMachineExport, imageFormat string) st
 	return ""
 }
 
+// downloadedFilename follows FindVolumeUrl: the raw image when it is converted, the compressed one otherwise
+func downloadedFilename(name, imageFormat string) string {
+	if imageFormat != "" {
+		return name + ".img"
+	}
+	return name + ".img.gz"
+}
+
 func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.Secret {
 	stringData := map[string]string{
-		"AWS_REGION":        opts.AWSRegion,
-		exportTokenEnvVar:   opts.ExportServerToken,
-		exportServerPEMCert: opts.ExportServerCertificate,
+		"AWS_REGION": opts.AWSRegion,
 	}
-	if opts.AWSAccessKeyId != nil && opts.AWSSecretAccessKey != nil {
-		stringData["AWS_ACCESS_KEY_ID"] = *opts.AWSAccessKeyId
-		stringData["AWS_SECRET_ACCESS_KEY"] = *opts.AWSSecretAccessKey
+	if opts.AWSAccessKeyId != "" && opts.AWSSecretAccessKey != "" {
+		stringData["AWS_ACCESS_KEY_ID"] = opts.AWSAccessKeyId
+		stringData["AWS_SECRET_ACCESS_KEY"] = opts.AWSSecretAccessKey
 	}
 	if opts.S3EndpointUrl != "" {
 		stringData["AWS_ENDPOINT_URL"] = opts.S3EndpointUrl
 	}
 
+	return generateUploaderSecret(job, opts.ExportServerToken, opts.ExportServerCertificate, stringData)
+}
+
+// generateUploaderSecret adds the export token and certificate the download reads to the data of an uploader
+func generateUploaderSecret(job *batchv1.Job, token, certificate string, stringData map[string]string) *corev1.Secret {
+	stringData[exportTokenEnvVar] = token
+	stringData[exportServerPEMCert] = certificate
+
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      job.Name,
-			Namespace: opts.Namespace,
+			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job")),
 			},
 		},
 		StringData: stringData,
+	}
+}
+
+// generateUploaderJob gives the S3 and OCI uploaders the same pod: its secret has the name of the job
+func generateUploaderJob(export *exportv1.VirtualMachineExport, name, namespace, serviceAccountName string, initContainers, containers []corev1.Container, extraVolumes ...corev1.Volume) *batchv1.Job {
+	volumes := append([]corev1.Volume{
+		{
+			Name: tempVolumeMountVolumeMapping,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		{
+			Name: certVolumeMountVolumeMapping,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: name,
+					Items: []corev1.KeyToPath{
+						{
+							Key:  exportServerPEMCert,
+							Path: exportServerPEMCert,
+						},
+					},
+				},
+			},
+		},
+	}, extraVolumes...)
+
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),
+			},
+		},
+		Spec: batchv1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					ServiceAccountName: serviceAccountName,
+					InitContainers:     initContainers,
+					Containers:         containers,
+					Volumes:            volumes,
+					RestartPolicy:      corev1.RestartPolicyNever,
+				},
+			},
+		},
 	}
 }
 
@@ -124,7 +190,7 @@ func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl s
 		fmt.Sprintf("curl --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
 			certVolumeMountPath, exportServerPEMCert,
 			tempVolumeMountPath, downloadedFilename,
-			steps.ExportTokenHeader, exportTokenEnvVar,
+			exportTokenHeader, exportTokenEnvVar,
 			exportServerUrl),
 	}
 	if raw {
@@ -135,7 +201,7 @@ func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl s
 			"-c",
 			fmt.Sprintf("set -o pipefail; curl --fail --cacert %s/%s -H \"%s: $%s\" %s | dd of=%s/%s conv=sparse bs=1M",
 				certVolumeMountPath, exportServerPEMCert,
-				steps.ExportTokenHeader, exportTokenEnvVar,
+				exportTokenHeader, exportTokenEnvVar,
 				exportServerUrl,
 				tempVolumeMountPath, downloadedFilename),
 		}
@@ -159,10 +225,7 @@ func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl s
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      tempVolumeMountVolumeMapping,
-				MountPath: tempVolumeMountPath,
-			},
+			tempVolumeMount,
 			{
 				Name:      certVolumeMountVolumeMapping,
 				MountPath: certVolumeMountPath,
@@ -177,28 +240,29 @@ func generateConvertCommand(imageFormat, downloadedFile, convertedFile string) [
 
 func generateConvertContainer(command []string, env []corev1.EnvVar) corev1.Container {
 	return corev1.Container{
-		Name:    "convert",
-		Image:   qemuImgImage,
-		Command: command,
-		Env:     env,
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      tempVolumeMountVolumeMapping,
-				MountPath: tempVolumeMountPath,
-			},
-		},
+		Name:         "convert",
+		Image:        qemuImgImage,
+		Command:      command,
+		Env:          env,
+		VolumeMounts: []corev1.VolumeMount{tempVolumeMount},
 	}
 }
 
 func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3UploaderOptions) *batchv1.Job {
-	downloadedFilename := fmt.Sprintf("%s.img.gz", opts.Name)
-	filename := downloadedFilename
-	var convertContainers []corev1.Container
+	// its secret has the same name
+	jobName := buildJobName("s3-uploader", opts.Name)
+	downloaded := downloadedFilename(opts.Name, opts.ImageFormat)
+
+	initContainers := []corev1.Container{
+		generateDownloadContainer(jobName, downloaded, opts.ExportServerUrl, opts.ImageFormat != ""),
+	}
+	filename := downloaded
 	if opts.ImageFormat != "" {
-		downloadedFilename = fmt.Sprintf("%s.img", opts.Name)
 		filename = fmt.Sprintf("%s.%s", opts.Name, opts.ImageFormat)
-		convertCommand := generateConvertCommand(opts.ImageFormat, path.Join(tempVolumeMountPath, downloadedFilename), path.Join(tempVolumeMountPath, filename))
-		convertContainers = append(convertContainers, generateConvertContainer(convertCommand, nil))
+		downloadedFile := path.Join(tempVolumeMountPath, downloaded)
+		convertCommand := strings.Join(generateConvertCommand(opts.ImageFormat, downloadedFile, path.Join(tempVolumeMountPath, filename)), " ")
+		// the raw image is not uploaded, its space is freed for the upload
+		initContainers = append(initContainers, generateConvertContainer([]string{"/bin/sh", "-c", fmt.Sprintf("%s && rm %s", convertCommand, downloadedFile)}, nil))
 	}
 
 	objectFilename := filename
@@ -206,80 +270,25 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 		objectFilename = opts.ObjectName + strings.TrimPrefix(filename, opts.Name)
 	}
 
-	var serviceAccountName string
-	if opts.ServiceAccountName != nil {
-		serviceAccountName = *opts.ServiceAccountName
-	}
-
-	// its secret has the same name
-	jobName := buildJobName("s3-uploader", opts.Name)
-
-	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: opts.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),
-			},
+	upload := corev1.Container{
+		Name:  "upload",
+		Image: "amazon/aws-cli:2.36.49",
+		Command: []string{
+			"/bin/sh",
+			"-c",
+			fmt.Sprintf("aws s3 cp %s/%s s3://%s", tempVolumeMountPath, filename, path.Join(opts.S3BucketName, opts.S3KeyPrefix, objectFilename)),
 		},
-		Spec: batchv1.JobSpec{
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					ServiceAccountName: serviceAccountName,
-					InitContainers: append([]corev1.Container{
-						generateDownloadContainer(jobName, downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
-					}, convertContainers...),
-					Containers: []corev1.Container{
-						{
-							Name:  "upload",
-							Image: "amazon/aws-cli:2.36.49",
-							Command: []string{
-								"/bin/sh",
-								"-c",
-								fmt.Sprintf("aws s3 cp %s/%s s3://%s", tempVolumeMountPath, filename, path.Join(opts.S3BucketName, opts.S3KeyPrefix, objectFilename)),
-							},
-							EnvFrom: []corev1.EnvFromSource{
-								{
-									SecretRef: &corev1.SecretEnvSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: jobName,
-										},
-									},
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      tempVolumeMountVolumeMapping,
-									MountPath: tempVolumeMountPath,
-								},
-							},
-						},
+		EnvFrom: []corev1.EnvFromSource{
+			{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: jobName,
 					},
-					Volumes: []corev1.Volume{
-						{
-							Name: tempVolumeMountVolumeMapping,
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
-							},
-						},
-						{
-							Name: certVolumeMountVolumeMapping,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: jobName,
-									Items: []corev1.KeyToPath{
-										{
-											Key:  exportServerPEMCert,
-											Path: exportServerPEMCert,
-										},
-									},
-								},
-							},
-						},
-					},
-					RestartPolicy: corev1.RestartPolicyNever,
 				},
 			},
 		},
+		VolumeMounts: []corev1.VolumeMount{tempVolumeMount},
 	}
+
+	return generateUploaderJob(export, jobName, opts.Namespace, opts.ServiceAccountName, initContainers, []corev1.Container{upload})
 }

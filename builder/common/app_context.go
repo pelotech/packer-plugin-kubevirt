@@ -1,11 +1,11 @@
 package common
 
 import (
+	"errors"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1"
-	"packer-plugin-kubevirt/builder/common/vm"
 )
 
 type StateBagEntry string
@@ -15,13 +15,10 @@ const (
 	PackerUi                  StateBagEntry = "ui"
 	PackerError               StateBagEntry = "error"
 	VirtualMachine            StateBagEntry = "vm"
-	VirtualMachineOsFamily    StateBagEntry = "vmosfamily"
 	VirtualMachineExport      StateBagEntry = "vmexport"
 	VirtualMachineExportToken StateBagEntry = "vmexporttoken"
 	// the export owns the stopped Virtual Machine, its deletion removes the disk
 	VirtualMachineOwnedByExport StateBagEntry = "vmownedbyexport"
-	Preference                  StateBagEntry = "preference"
-	DiskSize                    StateBagEntry = "disksize"
 
 	VirtualMachineHost     = "127.0.0.1"
 	VirtualMachineUsername = "packer"
@@ -60,14 +57,6 @@ func (s *AppContext) GetVirtualMachine() *kubevirtv1.VirtualMachine {
 	return nil
 }
 
-func (s *AppContext) GetVirtualMachineOSFamily() *vm.OsFamily {
-	osFamily := s.get(VirtualMachineOsFamily)
-	if osFamily != nil {
-		return osFamily.(*vm.OsFamily)
-	}
-	return nil
-}
-
 func (s *AppContext) GetVirtualMachineExport() *exportv1.VirtualMachineExport {
 	export := s.get(VirtualMachineExport)
 	if export != nil {
@@ -85,38 +74,35 @@ func (s *AppContext) IsVirtualMachineOwnedByExport() bool {
 	return owned
 }
 
+// BuildError returns why the build stopped: the error of the step that halted it, or its cancellation
+func (s *AppContext) BuildError() error {
+	if err := s.GetPackerError(); err != nil {
+		return err
+	}
+	// a cancelled step halts without an error
+	if _, cancelled := s.State.GetOk(multistep.StateCancelled); cancelled {
+		return errors.New("build was cancelled")
+	}
+	if _, halted := s.State.GetOk(multistep.StateHalted); halted {
+		return errors.New("build was halted")
+	}
+	return nil
+}
+
 // BuildFailed tells whether a step halted the build or it was cancelled
 func (s *AppContext) BuildFailed() bool {
-	_, halted := s.State.GetOk(multistep.StateHalted)
-	_, cancelled := s.State.GetOk(multistep.StateCancelled)
-	return halted || cancelled
+	return s.BuildError() != nil
 }
 
-func (s *AppContext) GetPreference() string {
-	preference := s.get(Preference)
-	if preference != nil {
-		return preference.(string)
-	}
-	return ""
-}
-
-func (s *AppContext) GetDiskSize() string {
-	diskSize := s.get(DiskSize)
-	if diskSize != nil {
-		return diskSize.(string)
-	}
-	return ""
-}
-
-func (s *AppContext) BuildArtifact(builderId string) packersdk.Artifact {
+func (s *AppContext) BuildArtifact(builderId, preference, diskSize string) packersdk.Artifact {
 	return &KubevirtArtifact{
 		BuilderIdValue: builderId,
 		StateData: map[string]interface{}{
 			NamespaceArtifactKey:                 s.GetVirtualMachineExport().Namespace,
 			VirtualMachineExportNameArtifactKey:  s.GetVirtualMachineExport().Name,
 			VirtualMachineExportTokenArtifactKey: s.GetVirtualMachineExportToken(),
-			PreferenceArtifactKey:                s.GetPreference(),
-			DiskSizeArtifactKey:                  s.GetDiskSize(),
+			PreferenceArtifactKey:                preference,
+			DiskSizeArtifactKey:                  diskSize,
 		},
 	}
 }

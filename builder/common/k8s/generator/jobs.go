@@ -1,47 +1,47 @@
 package generator
 
 import (
-	"fmt"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"path"
 )
 
 const (
-	homeDirVolumeName = "guestfs"
-	homeDirPath       = "/home/guestfs"
-	vmDiskVolumeName  = "volume"
-	vmDiskPath        = "/disk"
-	tmpDirVolumeName  = "libguestfs-tmp-dir"
-	tmpDirPath        = "/tmp/guestfs"
+	// GuestFSJobNameSuffix follows the name of the Virtual Machine in the name of the generalize job
+	GuestFSJobNameSuffix = "-libguestfs"
+	homeDirVolumeName    = "guestfs"
+	homeDirPath          = "/home/guestfs"
+	vmDiskVolumeName     = "volume"
+	vmDiskPath           = "/disk"
+	tmpDirVolumeName     = "libguestfs-tmp-dir"
+	tmpDirPath           = "/tmp/guestfs"
 )
 
-func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, pvcName string) *batchv1.Job {
-
+func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-libguestfs", vm.Name),
+			Name:      vm.Name + GuestFSJobNameSuffix,
 			Namespace: vm.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(vm, kubevirtv1.VirtualMachineGroupVersionKind),
 			},
 		},
 		Spec: batchv1.JobSpec{
-			TTLSecondsAfterFinished: pointer.Int32(30),
+			TTLSecondsAfterFinished: ptr.To[int32](30),
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					NodeSelector:  vm.Spec.Template.Spec.NodeSelector,
 					Tolerations:   vm.Spec.Template.Spec.Tolerations,
 					RestartPolicy: corev1.RestartPolicyNever,
 					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot: pointer.Bool(false),
-						RunAsUser:    pointer.Int64(0),
-						RunAsGroup:   pointer.Int64(0),
-						FSGroup:      pointer.Int64(0),
+						RunAsNonRoot: ptr.To(false),
+						RunAsUser:    ptr.To[int64](0),
+						RunAsGroup:   ptr.To[int64](0),
+						FSGroup:      ptr.To[int64](0),
 						SeccompProfile: &corev1.SeccompProfile{
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
@@ -85,7 +85,7 @@ func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, pvcName string) *batchv1.
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								AllowPrivilegeEscalation: pointer.Bool(false),
+								AllowPrivilegeEscalation: ptr.To(false),
 								Capabilities: &corev1.Capabilities{
 									Drop: []corev1.Capability{"ALL"},
 								},
@@ -122,7 +122,7 @@ func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, pvcName string) *batchv1.
 							Name: vmDiskVolumeName,
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: pvcName,
+									ClaimName: BuildDataVolumeName(vm.Name, SourceDataVolumeSuffix),
 									ReadOnly:  false,
 								},
 							},

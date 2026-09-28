@@ -8,7 +8,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	instancetypeapi "kubevirt.io/api/instancetype"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
-	"packer-plugin-kubevirt/builder/common/steps"
 	"strings"
 	"time"
 )
@@ -123,7 +122,7 @@ func GenerateDataVolumeSecret(dataVolume *cdiv1beta1.DataVolume, opts DataSource
 		},
 		Type: corev1.SecretTypeOpaque,
 		StringData: map[string]string{
-			exportTokenHeaderKey: fmt.Sprintf("%s:%s", steps.ExportTokenHeader, opts.ExportServerToken),
+			exportTokenHeaderKey: fmt.Sprintf("%s:%s", exportTokenHeader, opts.ExportServerToken),
 		},
 	}
 }
