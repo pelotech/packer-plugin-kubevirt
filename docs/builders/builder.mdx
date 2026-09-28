@@ -74,6 +74,10 @@ Defaults to `10m`
 - `vm_export_timeout` (duration string) - Time out duration for each stage of the export: VM shutdown, `virt-sysprep` job (Linux only) and export server to be up and ready for download
 Defaults to `5m`
 
+- `vm_export_ttl` (duration string) - Lifetime of the Virtual Machine Export, from its creation. When it expires, KubeVirt deletes the export, and with it the stopped VM and its disk.
+The post-processors download from the export: raise it for several post-processors, big disks or slow uploads
+Defaults to `2h`, the KubeVirt default
+
 - `vm_skip_virt_sysprep` (bool) - Skip the `virt-sysprep` job on Linux disks, the VM is still stopped before the export. It changes nothing for Windows, generalized by your shutdown command
 Defaults to `false`
 

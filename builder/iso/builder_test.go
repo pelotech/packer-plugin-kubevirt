@@ -33,6 +33,18 @@ func TestPrepareRejectsInvalidResources(t *testing.T) {
 	}
 }
 
+func TestPrepareRejectsNegativeExportTTL(t *testing.T) {
+	builder := new(Builder)
+	_, _, err := builder.Prepare(map[string]interface{}{
+		"kubernetes_name": "base-ubuntu",
+		"vm_disk_space":   "10Gi",
+		"vm_export_ttl":   "-1h",
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid 'vm_export_ttl' value '-1h0m0s'") {
+		t.Errorf("expected an invalid 'vm_export_ttl' error, got: %v", err)
+	}
+}
+
 func TestDecodeTolerations(t *testing.T) {
 	tolerations := decodeTolerations([]map[string]string{
 		{"key": "pelo.tech/kvm", "operator": "Equal", "value": "true", "effect": "NoSchedule"},
