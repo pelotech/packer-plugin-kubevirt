@@ -187,7 +187,7 @@ func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl s
 	command := []string{
 		"/bin/sh",
 		"-c",
-		fmt.Sprintf("curl --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
+		fmt.Sprintf("curl --fail --cacert %s/%s -o %s/%s -H \"%s: $%s\" %s",
 			certVolumeMountPath, exportServerPEMCert,
 			tempVolumeMountPath, downloadedFilename,
 			exportTokenHeader, exportTokenEnvVar,
