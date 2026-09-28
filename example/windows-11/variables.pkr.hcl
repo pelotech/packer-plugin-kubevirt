@@ -36,12 +36,12 @@ variable "vm_memory" {
   default     = "8Gi"
 }
 
-variable "destination_aws_s3_bucket" {
+variable "destination_s3_bucket" {
   description = "AWS S3 Bucket where exported VM images are stored"
   type        = string
 }
 
-variable "destination_aws_s3_key_prefix" {
+variable "destination_s3_key_prefix" {
   description = "AWS S3 Key prefix for all the exported VM images"
   type        = string
   default     = "exports/"
@@ -53,21 +53,21 @@ variable "destination_s3_endpoint_url" {
   default     = ""
 }
 
-variable "destination_aws_access_key_id" {
-  description = "AWS Access Key ID for S3 bucket containing VM images"
+variable "destination_s3_access_key_id" {
+  description = "S3 Access Key ID for S3 bucket containing VM images"
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "destination_aws_secret_access_key" {
-  description = "AWS Secret Access Key for S3 bucket containing VM images"
+variable "destination_s3_secret_access_key" {
+  description = "S3 Secret Access Key for S3 bucket containing VM images"
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "destination_aws_region" {
-  description = "AWS region used to initialize the AWS CLI uploading the exported VM image"
+variable "destination_s3_region" {
+  description = "S3 region used to initialize the AWS CLI uploading the exported VM image"
   type        = string
 }

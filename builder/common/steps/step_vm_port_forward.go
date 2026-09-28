@@ -51,7 +51,7 @@ func (s *StepPortForwardVM) Run(ctx context.Context, state multistep.StateBag) m
 func (s *StepPortForwardVM) computePortMappings() ([]string, error) {
 	localPort, remotePort := &s.Comm.SSHPort, common.DefaultSSHPort
 	if s.Comm.Type == "winrm" {
-		// NOTE: sysprep has the current DefaultWinRMPort value hardcoded, please change that value carefully while the sysprep conf. is not templated.
+		// NOTE: the default autounattend.xml has the current DefaultWinRMPort value hardcoded, please change that value carefully while the answer file is not templated.
 		localPort, remotePort = &s.Comm.WinRMPort, common.DefaultWinRMPort
 	}
 	if *localPort == 0 {

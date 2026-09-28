@@ -45,7 +45,7 @@ The KubeVirt plugin is intended for creating VM base images.
 
 #### Builders
 
-- [kubevirt-iso](https://github.com/pelotech/packer-plugin-kubevirt/blob/main/docs/builders/builder.mdx) - The ISO builder is used to spin up a KubeVirt VM, provision and export the associated disk image.
+- [kubevirt](https://github.com/pelotech/packer-plugin-kubevirt/blob/main/docs/builders/builder.mdx) - The builder is used to spin up a KubeVirt VM, provision and export the associated disk image.
 
 #### Post-processors
 

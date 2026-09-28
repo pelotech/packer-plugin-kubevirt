@@ -15,8 +15,8 @@ import (
 )
 
 type StepWaitForVM struct {
-	Clients             *k8s.Clients
-	VmDeploymentTimeOut time.Duration
+	Clients          *k8s.Clients
+	VmInstallTimeOut time.Duration
 }
 
 func (s *StepWaitForVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -38,7 +38,7 @@ func (s *StepWaitForVM) Run(_ context.Context, state multistep.StateBag) multist
 		}
 	}
 
-	ui.Say(fmt.Sprintf("deployment step has completed for Virtual Machine %s/%s", ns, name))
+	ui.Say(fmt.Sprintf("install step has completed for Virtual Machine %s/%s", ns, name))
 
 	return multistep.ActionContinue
 }
@@ -68,7 +68,7 @@ func (s *StepWaitForVM) waitForVirtualMachine(ui packer.Ui, vm *kubevirtv1.Virtu
 		}
 		return false, nil
 	}
-	err := k8s.WaitForResource(s.Clients.Kubevirt.KubevirtV1().RESTClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmDeploymentTimeOut, watchFunc)
+	err := k8s.WaitForResource(s.Clients.Kubevirt.KubevirtV1().RESTClient(), vm.Namespace, k8s.VirtualMachineResourceName, vm.Name, vm.ResourceVersion, s.VmInstallTimeOut, watchFunc)
 	if err != nil {
 		return fmt.Errorf("failed to wait for Virtual Machine %s/%s to be ready: %s", vm.Namespace, vm.Name, err)
 	}

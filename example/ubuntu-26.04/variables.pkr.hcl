@@ -16,19 +16,19 @@ variable "vm_memory" {
   default     = "8Gi"
 }
 
-variable "destination_aws_s3_bucket" {
+variable "destination_s3_bucket" {
   description = "AWS S3 Bucket where exported VM images are stored"
   type        = string
 }
 
-variable "destination_aws_s3_key_prefix" {
+variable "destination_s3_key_prefix" {
   description = "AWS S3 Key prefix for all the exported VM images"
   type        = string
   default     = "exports/"
 
   validation {
-    condition     = length(var.destination_aws_s3_key_prefix) == 0 || (length(var.destination_aws_s3_key_prefix) > 0 && length(regexall("[a-zA-Z0-9]+/", var.destination_aws_s3_key_prefix)) > 0)
-    error_message = "The 'destination_aws_s3_key_prefix' value must end with a trailing slash."
+    condition     = length(var.destination_s3_key_prefix) == 0 || (length(var.destination_s3_key_prefix) > 0 && length(regexall("[a-zA-Z0-9]+/", var.destination_s3_key_prefix)) > 0)
+    error_message = "The 'destination_s3_key_prefix' value must end with a trailing slash."
   }
 }
 
@@ -45,22 +45,22 @@ variable "destination_service_account_name" {
   default     = ""
 }
 
-variable "destination_aws_access_key_id" {
-  description = "AWS Access Key ID for S3 bucket containing VM images (static credentials are not recommended)"
+variable "destination_s3_access_key_id" {
+  description = "S3 Access Key ID for S3 bucket containing VM images (static credentials are not recommended)"
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "destination_aws_secret_access_key" {
-  description = "AWS Secret Access Key for S3 bucket containing VM images (static credentials are not recommended)"
+variable "destination_s3_secret_access_key" {
+  description = "S3 Secret Access Key for S3 bucket containing VM images (static credentials are not recommended)"
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "destination_aws_region" {
-  description = "AWS region used to initialize the AWS CLI uploading the exported VM image"
+variable "destination_s3_region" {
+  description = "S3 region used to initialize the AWS CLI uploading the exported VM image"
   type        = string
 }
 

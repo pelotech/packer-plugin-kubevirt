@@ -55,12 +55,12 @@ jobs:
       # post-processors of the example this leg does not run, by name
       PACKER_EXCEPT: ${{ matrix.export == 's3' && 'oci,datasource' || matrix.export == 'oci' && 's3,datasource' || matrix.export == 'datasource' && 's3,oci' || '' }}
       S3_BUCKET: pelotech-vm-images
-      PKR_VAR_destination_aws_s3_bucket: pelotech-vm-images
+      PKR_VAR_destination_s3_bucket: pelotech-vm-images
       # region of .github/actions/garage/garage.yaml
-      PKR_VAR_destination_aws_region: us-west-2
+      PKR_VAR_destination_s3_region: us-west-2
       # the upload runs in a pod, it reaches Garage through its service
       PKR_VAR_destination_s3_endpoint_url: "http://garage.garage.svc.cluster.local:3900"
-      PKR_VAR_destination_aws_s3_key_prefix: "ci/"
+      PKR_VAR_destination_s3_key_prefix: "ci/"
       OCI_REPOSITORY: pelotech/base-ubuntu
       OCI_TAG: "26.04"
       # the push runs in a pod, it reaches the registry through its service
@@ -147,13 +147,13 @@ jobs:
       - name: check the image in the bucket
         if: matrix.export == 's3' || matrix.export == 'all'
         env:
-          AWS_ACCESS_KEY_ID: ${{ env.PKR_VAR_destination_aws_access_key_id }}
-          AWS_SECRET_ACCESS_KEY: ${{ env.PKR_VAR_destination_aws_secret_access_key }}
+          AWS_ACCESS_KEY_ID: ${{ env.PKR_VAR_destination_s3_access_key_id }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.PKR_VAR_destination_s3_secret_access_key }}
           AWS_REGION: us-west-2
         run: |
           kubectl port-forward --namespace garage service/garage 3900:3900 &
           curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:3900
-          aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_aws_s3_key_prefix}base-ubuntu-2604.img.gz"
+          aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_s3_key_prefix}base-ubuntu-2604.img.gz"
 
       - name: check the image in the registry
         if: matrix.export == 'oci' || matrix.export == 'all'

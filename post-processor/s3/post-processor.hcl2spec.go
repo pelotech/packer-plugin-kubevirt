@@ -23,9 +23,9 @@ type FlatConfig struct {
 	S3ObjectName        *string           `mapstructure:"s3_object_name" required:"false" cty:"s3_object_name" hcl:"s3_object_name"`
 	S3EndpointUrl       *string           `mapstructure:"s3_endpoint_url" required:"false" cty:"s3_endpoint_url" hcl:"s3_endpoint_url"`
 	ServiceAccountName  *string           `mapstructure:"service_account_name" cty:"service_account_name" hcl:"service_account_name"`
-	AWSAccessKeyId      *string           `mapstructure:"aws_access_key_id" cty:"aws_access_key_id" hcl:"aws_access_key_id"`
-	AWSSecretAccessKey  *string           `mapstructure:"aws_secret_access_key" cty:"aws_secret_access_key" hcl:"aws_secret_access_key"`
-	AWSRegion           *string           `mapstructure:"aws_region" cty:"aws_region" hcl:"aws_region"`
+	S3AccessKeyId       *string           `mapstructure:"s3_access_key_id" cty:"s3_access_key_id" hcl:"s3_access_key_id"`
+	S3SecretAccessKey   *string           `mapstructure:"s3_secret_access_key" cty:"s3_secret_access_key" hcl:"s3_secret_access_key"`
+	S3Region            *string           `mapstructure:"s3_region" cty:"s3_region" hcl:"s3_region"`
 	UploadTimeOut       *string           `mapstructure:"upload_timeout" required:"false" cty:"upload_timeout" hcl:"upload_timeout"`
 	ImageFormat         *string           `mapstructure:"image_format" required:"false" cty:"image_format" hcl:"image_format"`
 	KeepExport          *bool             `mapstructure:"keep_export" required:"false" cty:"keep_export" hcl:"keep_export"`
@@ -56,9 +56,9 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"s3_object_name":             &hcldec.AttrSpec{Name: "s3_object_name", Type: cty.String, Required: false},
 		"s3_endpoint_url":            &hcldec.AttrSpec{Name: "s3_endpoint_url", Type: cty.String, Required: false},
 		"service_account_name":       &hcldec.AttrSpec{Name: "service_account_name", Type: cty.String, Required: false},
-		"aws_access_key_id":          &hcldec.AttrSpec{Name: "aws_access_key_id", Type: cty.String, Required: false},
-		"aws_secret_access_key":      &hcldec.AttrSpec{Name: "aws_secret_access_key", Type: cty.String, Required: false},
-		"aws_region":                 &hcldec.AttrSpec{Name: "aws_region", Type: cty.String, Required: false},
+		"s3_access_key_id":           &hcldec.AttrSpec{Name: "s3_access_key_id", Type: cty.String, Required: false},
+		"s3_secret_access_key":       &hcldec.AttrSpec{Name: "s3_secret_access_key", Type: cty.String, Required: false},
+		"s3_region":                  &hcldec.AttrSpec{Name: "s3_region", Type: cty.String, Required: false},
 		"upload_timeout":             &hcldec.AttrSpec{Name: "upload_timeout", Type: cty.String, Required: false},
 		"image_format":               &hcldec.AttrSpec{Name: "image_format", Type: cty.String, Required: false},
 		"keep_export":                &hcldec.AttrSpec{Name: "keep_export", Type: cty.Bool, Required: false},

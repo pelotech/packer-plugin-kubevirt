@@ -126,9 +126,9 @@ func TestPostProcessUsesBuilderValues(t *testing.T) {
 func TestPostProcessOverridesBuilderValues(t *testing.T) {
 	config := Config{
 		DataSourceName:      "ubuntu-26-04",
-		Namespace:           "images",
+		DataSourceNamespace: "images",
 		VolumeSize:          "20Gi",
-		StorageClass:        "fast",
+		VolumeStorageClass:  "fast",
 		DefaultPreference:   "ubuntu.26.04",
 		DefaultInstanceType: "u1.medium",
 	}
@@ -275,9 +275,9 @@ func TestConfigureRejectsInvalidValues(t *testing.T) {
 
 	invalid := map[string]string{
 		"datasource_name":       "Base_Ubuntu",
-		"namespace":             "images.linux",
+		"datasource_namespace":  "images.linux",
 		"volume_size":           "10 gigabytes",
-		"storage_class":         "Fast Storage",
+		"volume_storage_class":  "Fast Storage",
 		"default_preference":    "ubuntu/26.04",
 		"default_instance_type": "u1/medium",
 	}

@@ -26,7 +26,7 @@ func TestStepWaitForVMReadsTheCurrentState(t *testing.T) {
 	appContext.Put(common.VirtualMachine, created)
 
 	// the Virtual Machine got ready while the boot command was typed, there is no event left to wait for
-	step := &StepWaitForVM{Clients: &k8s.Clients{Kubevirt: kubevirtfake.NewSimpleClientset(current)}, VmDeploymentTimeOut: time.Second}
+	step := &StepWaitForVM{Clients: &k8s.Clients{Kubevirt: kubevirtfake.NewSimpleClientset(current)}, VmInstallTimeOut: time.Second}
 	if action := step.Run(context.Background(), appContext.State); action != multistep.ActionContinue {
 		t.Fatalf("expected the step to continue, got action: %v, error: %v", action, appContext.GetPackerError())
 	}
