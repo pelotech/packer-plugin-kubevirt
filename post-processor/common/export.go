@@ -44,18 +44,18 @@ func DeleteOrKeepExport(clients *k8s.Clients, ui packersdk.Ui, namespace, name s
 }
 
 // RunUploadJob creates an uploader job, then its secret owned by the job, and waits for the job to complete
-func RunUploadJob(clients *k8s.Clients, ui packersdk.Ui, label string, job *batchv1.Job, generateSecret func(*batchv1.Job) *corev1.Secret, timeout time.Duration) error {
-	job, err := clients.Kubernetes.BatchV1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+func RunUploadJob(ctx context.Context, clients *k8s.Clients, ui packersdk.Ui, label string, job *batchv1.Job, generateSecret func(*batchv1.Job) *corev1.Secret, timeout time.Duration) error {
+	job, err := clients.Kubernetes.BatchV1().Jobs(job.Namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to deploy %s job: %w", label, err)
 	}
 
-	_, err = clients.Kubernetes.CoreV1().Secrets(job.Namespace).Create(context.TODO(), generateSecret(job), metav1.CreateOptions{})
+	_, err = clients.Kubernetes.CoreV1().Secrets(job.Namespace).Create(ctx, generateSecret(job), metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create %s secret: %w", label, err)
 	}
 
-	err = k8s.WaitForJobCompletion(clients.Kubernetes, ui, job, timeout)
+	err = k8s.WaitForJobCompletion(ctx, clients.Kubernetes, ui, job, timeout)
 	if err != nil {
 		return fmt.Errorf("error with '%s' job: %w", label, err)
 	}

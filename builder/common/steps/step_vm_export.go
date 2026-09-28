@@ -26,7 +26,7 @@ type StepExportVM struct {
 	VmExportTTL     time.Duration
 }
 
-func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
+func (s *StepExportVM) Run(ctx context.Context, state multistep.StateBag) multistep.StepAction {
 	appContext := &common.AppContext{State: state}
 	ui := appContext.GetPackerUi()
 	vm := appContext.GetVirtualMachine()
@@ -52,7 +52,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 	appContext.Put(common.VirtualMachineExportToken, exportToken)
 
-	err = s.waitForExportReady(ui, export)
+	err = s.waitForExportReady(ctx, ui, export)
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("failed to wait for Virtual Machine Export to be in a 'Ready' state %s/%s: %s", vm.Namespace, vm.Name, err))
 	}
@@ -93,9 +93,9 @@ func (s *StepExportVM) handOverVirtualMachine(vm *kubevirtv1.VirtualMachine, exp
 	})
 }
 
-func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.VirtualMachineExport) error {
+func (s *StepExportVM) waitForExportReady(ctx context.Context, ui packer.Ui, export *exportv1.VirtualMachineExport) error {
 	exports := s.Clients.Kubevirt.ExportV1().VirtualMachineExports(export.Namespace)
-	err := k8s.WaitForResource(context.TODO(), s.Clients.Kubevirt, exports, export.Name, s.VmExportTimeOut, func(updatedExport *exportv1.VirtualMachineExport) (bool, error) {
+	err := k8s.WaitForResource(ctx, s.Clients.Kubevirt, exports, export.Name, s.VmExportTimeOut, func(updatedExport *exportv1.VirtualMachineExport) (bool, error) {
 		if updatedExport.Status == nil {
 			return false, nil
 		}

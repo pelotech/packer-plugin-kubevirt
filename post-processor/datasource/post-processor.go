@@ -79,7 +79,7 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 	return nil
 }
 
-func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
+func (p *PostProcessor) PostProcess(ctx context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
 	preference, _ := source.State(buildercommon.PreferenceArtifactKey).(string)
 	diskSize, _ := source.State(buildercommon.DiskSizeArtifactKey).(string)
 
@@ -115,7 +115,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		return nil, true, true, err
 	}
 
-	err = p.importVolume(ui, options)
+	err = p.importVolume(ctx, ui, options)
 	if err != nil {
 		return nil, true, true, err
 	}
@@ -129,14 +129,14 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	return source, true, true, nil
 }
 
-func (p *PostProcessor) importVolume(ui packersdk.Ui, options common.DataSourceOptions) error {
+func (p *PostProcessor) importVolume(ctx context.Context, ui packersdk.Ui, options common.DataSourceOptions) error {
 	dataVolumes := p.clients.CDI.CdiV1beta1().DataVolumes(options.Namespace)
-	dataVolume, err := dataVolumes.Create(context.TODO(), common.GenerateDataVolume(options), metav1.CreateOptions{})
+	dataVolume, err := dataVolumes.Create(ctx, common.GenerateDataVolume(options), metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create Data Volume: %w", err)
 	}
 
-	err = p.waitForImport(ui, dataVolume, options)
+	err = p.waitForImport(ctx, ui, dataVolume, options)
 	if err != nil {
 		deleteErr := dataVolumes.Delete(context.TODO(), dataVolume.Name, metav1.DeleteOptions{})
 		if deleteErr != nil {
@@ -148,22 +148,22 @@ func (p *PostProcessor) importVolume(ui packersdk.Ui, options common.DataSourceO
 	return nil
 }
 
-func (p *PostProcessor) waitForImport(ui packersdk.Ui, dataVolume *cdiv1beta1.DataVolume, options common.DataSourceOptions) error {
+func (p *PostProcessor) waitForImport(ctx context.Context, ui packersdk.Ui, dataVolume *cdiv1beta1.DataVolume, options common.DataSourceOptions) error {
 	secrets := p.clients.Kubernetes.CoreV1().Secrets(options.Namespace)
-	secret, err := secrets.Create(context.TODO(), common.GenerateDataVolumeSecret(dataVolume, options), metav1.CreateOptions{})
+	secret, err := secrets.Create(ctx, common.GenerateDataVolumeSecret(dataVolume, options), metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create Data Volume secret: %w", err)
 	}
 	defer func() { _ = secrets.Delete(context.TODO(), secret.Name, metav1.DeleteOptions{}) }()
 
 	configMaps := p.clients.Kubernetes.CoreV1().ConfigMaps(options.Namespace)
-	configMap, err := configMaps.Create(context.TODO(), common.GenerateDataVolumeConfigMap(dataVolume, options), metav1.CreateOptions{})
+	configMap, err := configMaps.Create(ctx, common.GenerateDataVolumeConfigMap(dataVolume, options), metav1.CreateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create Data Volume config map: %w", err)
 	}
 	defer func() { _ = configMaps.Delete(context.TODO(), configMap.Name, metav1.DeleteOptions{}) }()
 
-	err = k8s.WaitForDataVolumeImport(p.clients, ui, dataVolume, p.config.ImportTimeOut)
+	err = k8s.WaitForDataVolumeImport(ctx, p.clients, ui, dataVolume, p.config.ImportTimeOut)
 	if err != nil {
 		return fmt.Errorf("error with Data Volume %s/%s: %w", dataVolume.Namespace, dataVolume.Name, err)
 	}

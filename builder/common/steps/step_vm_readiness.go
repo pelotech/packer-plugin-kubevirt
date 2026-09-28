@@ -17,13 +17,13 @@ type StepWaitForVM struct {
 	VmInstallTimeOut time.Duration
 }
 
-func (s *StepWaitForVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
+func (s *StepWaitForVM) Run(ctx context.Context, state multistep.StateBag) multistep.StepAction {
 	appContext := &common.AppContext{State: state}
 	ui := appContext.GetPackerUi()
 	ns := appContext.GetVirtualMachine().Namespace
 	name := appContext.GetVirtualMachine().Name
 
-	err := s.waitForVirtualMachine(ui, ns, name)
+	err := s.waitForVirtualMachine(ctx, ui, ns, name)
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("failed to wait to be in a 'Ready' state for Virtual Machine %s/%s: %s", ns, name, err))
 	}
@@ -43,9 +43,9 @@ func isReady(vm *kubevirtv1.VirtualMachine) bool {
 }
 
 // waitForVirtualMachine starts from the current state, the Virtual Machine may have got ready while the boot command was typed
-func (s *StepWaitForVM) waitForVirtualMachine(ui packer.Ui, ns, name string) error {
+func (s *StepWaitForVM) waitForVirtualMachine(ctx context.Context, ui packer.Ui, ns, name string) error {
 	vms := s.Clients.Kubevirt.KubevirtV1().VirtualMachines(ns)
-	return k8s.WaitForResource(context.TODO(), s.Clients.Kubevirt, vms, name, s.VmInstallTimeOut, func(vm *kubevirtv1.VirtualMachine) (bool, error) {
+	return k8s.WaitForResource(ctx, s.Clients.Kubevirt, vms, name, s.VmInstallTimeOut, func(vm *kubevirtv1.VirtualMachine) (bool, error) {
 		if isReady(vm) {
 			return true, nil
 		}

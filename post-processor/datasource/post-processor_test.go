@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"errors"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -252,6 +253,23 @@ func TestPostProcessFailedImportLeavesDataSourceUntouched(t *testing.T) {
 	_, err = p.clients.Kubevirt.ExportV1().VirtualMachineExports("packer").Get(context.Background(), "base-ubuntu", metav1.GetOptions{})
 	if !k8serrors.IsNotFound(err) {
 		t.Errorf("expected the Virtual Machine Export to be deleted, got: %v", err)
+	}
+}
+
+func TestPostProcessStopsWaitingWhenCancelled(t *testing.T) {
+	p := newPostProcessor(Config{}, cdiv1beta1.ImportInProgress, newExport())
+	p.config.ImportTimeOut = 10 * time.Second
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(100*time.Millisecond, cancel)
+
+	started := time.Now()
+	_, _, _, err := p.PostProcess(ctx, packersdk.TestUi(t), newArtifact())
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Errorf("expected the post-processor to stop once cancelled, waited: %s", elapsed)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected an error saying the build was cancelled, got: %v", err)
 	}
 }
 

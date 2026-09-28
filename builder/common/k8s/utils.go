@@ -153,8 +153,8 @@ func WaitForResource[T, L runtime.Object](ctx context.Context, clientset any, re
 	return err
 }
 
-func WaitForJobCompletion(client kubernetes.Interface, ui packersdk.Ui, job *batchv1.Job, timeout time.Duration) error {
-	err := WaitForResource(context.TODO(), client, client.BatchV1().Jobs(job.Namespace), job.Name, timeout, func(updatedJob *batchv1.Job) (bool, error) {
+func WaitForJobCompletion(ctx context.Context, client kubernetes.Interface, ui packersdk.Ui, job *batchv1.Job, timeout time.Duration) error {
+	err := WaitForResource(ctx, client, client.BatchV1().Jobs(job.Namespace), job.Name, timeout, func(updatedJob *batchv1.Job) (bool, error) {
 		for index, condition := range updatedJob.Status.Conditions {
 			if index == 0 {
 				ui.Message(fmt.Sprintf("condition '%s' changed to '%s'", condition.Type, condition.Status))
@@ -228,8 +228,8 @@ func readContainerLogs(client kubernetes.Interface, pod *corev1.Pod, container s
 	return strings.TrimSpace(string(logs))
 }
 
-func WaitForVirtualMachineStopped(client kvcorev1.VirtualMachineInterface, name string, timeout time.Duration) error {
-	err := wait.PollUntilContextTimeout(context.Background(), VirtualMachineStopPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
+func WaitForVirtualMachineStopped(ctx context.Context, client kvcorev1.VirtualMachineInterface, name string, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(ctx, VirtualMachineStopPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
 		vm, err := client.Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -243,8 +243,8 @@ func WaitForVirtualMachineStopped(client kvcorev1.VirtualMachineInterface, name 
 	return nil
 }
 
-func WaitForVirtualMachineInstanceRunning(client kvcorev1.VirtualMachineInstanceInterface, name string, timeout time.Duration) error {
-	err := wait.PollUntilContextTimeout(context.Background(), VirtualMachineStopPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
+func WaitForVirtualMachineInstanceRunning(ctx context.Context, client kvcorev1.VirtualMachineInstanceInterface, name string, timeout time.Duration) error {
+	err := wait.PollUntilContextTimeout(ctx, VirtualMachineStopPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
 		instance, err := client.Get(ctx, name, metav1.GetOptions{})
 		if k8serrors.IsNotFound(err) {
 			// the instance is created once the volumes are imported
@@ -272,9 +272,9 @@ func OpenConsole(clients *Clients, namespace, name string) (net.Conn, error) {
 	return stream.AsConn(), nil
 }
 
-func WaitForDataVolumeImport(clients *Clients, ui packersdk.Ui, dataVolume *cdiv1beta1.DataVolume, timeout time.Duration) error {
+func WaitForDataVolumeImport(ctx context.Context, clients *Clients, ui packersdk.Ui, dataVolume *cdiv1beta1.DataVolume, timeout time.Duration) error {
 	var progress string
-	err := WaitForResource(context.TODO(), clients.CDI, clients.CDI.CdiV1beta1().DataVolumes(dataVolume.Namespace), dataVolume.Name, timeout, func(updatedDataVolume *cdiv1beta1.DataVolume) (bool, error) {
+	err := WaitForResource(ctx, clients.CDI, clients.CDI.CdiV1beta1().DataVolumes(dataVolume.Namespace), dataVolume.Name, timeout, func(updatedDataVolume *cdiv1beta1.DataVolume) (bool, error) {
 		status := updatedDataVolume.Status
 		updatedProgress := fmt.Sprintf("phase '%s', progress '%s'", status.Phase, status.Progress)
 		if status.Phase != cdiv1beta1.PhaseUnset && updatedProgress != progress {
