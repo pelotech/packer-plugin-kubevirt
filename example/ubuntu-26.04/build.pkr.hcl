@@ -12,7 +12,7 @@ packer {
 }
 
 source "kubevirt-iso" "linux" {
-  kubernetes_name      = "base-ubuntu-2604"
+  vm_name              = "base-ubuntu-2604"
   kubernetes_namespace = "${var.kubernetes_namespace}-linux"
   kubernetes_node_selectors = {
     "kubevirt.io/schedulable" = "true"
@@ -75,6 +75,6 @@ build {
 
   post-processor "kubevirt-datasource" {
     name            = "datasource"
-    datasource_name = "base-ubuntu" # Optional, default to the Kubernetes name
+    datasource_name = "base-ubuntu" # Optional, default to vm_name
   }
 }

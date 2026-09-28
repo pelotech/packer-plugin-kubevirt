@@ -38,7 +38,6 @@ type Config struct {
 	bootcommand.BootConfig          `mapstructure:",squash"`
 	BootKeyInterval                 time.Duration `mapstructure:"boot_key_interval" required:"false"`
 	shutdowncommand.ShutdownConfig  `mapstructure:",squash"`
-	KubernetesName                  string              `mapstructure:"kubernetes_name"`
 	KubernetesNamespace             string              `mapstructure:"kubernetes_namespace"`
 	KubernetesNodeSelectors         map[string]string   `mapstructure:"kubernetes_node_selectors"`
 	KubernetesTolerations           []map[string]string `mapstructure:"kubernetes_tolerations"`
@@ -46,6 +45,7 @@ type Config struct {
 	SourceUrl                       string              `mapstructure:"source_url"`
 	SourceAWSAccessKeyId            string              `mapstructure:"source_aws_access_key_id" required:"false"`
 	SourceAWSSecretAccessKey        string              `mapstructure:"source_aws_secret_access_key" required:"false"`
+	VirtualMachineName              string              `mapstructure:"vm_name"`
 	VirtualMachineDiskSpace         string              `mapstructure:"vm_disk_space"`
 	VirtualMachineCPU               string              `mapstructure:"vm_cpu" required:"false"`
 	VirtualMachineMemory            string              `mapstructure:"vm_memory" required:"false"`
@@ -195,7 +195,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		&stepDef.StepDeployVM{
 			Clients: b.clients,
 			VmOptions: generator.VirtualMachineOptions{
-				Name:           b.config.KubernetesName,
+				Name:           b.config.VirtualMachineName,
 				Namespace:      b.config.KubernetesNamespace,
 				NodeSelectors:  b.config.KubernetesNodeSelectors,
 				Tolerations:    decodeTolerations(b.config.KubernetesTolerations),

@@ -28,7 +28,8 @@ Windows is generalized by your shutdown command, see [Windows](#windows). `vm_sk
 
 **Required fields**
 
-- `kubernetes_name` (string) - Kubernetes resource name used for VM to be provisioned or as prefix for all resources enabling the process
+- `vm_name` (string) - Name of the Virtual Machine the build creates in the cluster. Its disks, secrets, jobs and Virtual Machine Export are named after it.
+The post-processors also name the S3 object and the DataSource after it, unless `s3_object_name` or `datasource_name` is set
 
 - `kubernetes_namespace` (string) - Kubernetes namespace used to provision and export virtual machines
 
@@ -167,7 +168,7 @@ Defaults to `30s`
 #### Linux
 ```hcl
 source "kubevirt-iso" "ubuntu" {
-  kubernetes_name             = "ubuntu"
+  vm_name                     = "ubuntu"
   kubernetes_namespace        = "default"
   kubernetes_node_selectors   = {
     "kubevirt.io/schedulable" = "true"
@@ -204,7 +205,7 @@ source "kubevirt-iso" "ubuntu" {
 #### Windows
 ```hcl
 source "kubevirt-iso" "windows" {
-  kubernetes_name        = "windows"
+  vm_name                = "windows"
   kubernetes_namespace   = "default"
   source_url             = "https://example.com/windows-11.iso"
   kubevirt_os_preference = "windows.11.virtio"

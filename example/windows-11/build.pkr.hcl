@@ -8,7 +8,7 @@ packer {
 }
 
 source "kubevirt-iso" "windows" {
-  kubernetes_name      = "base-windows-11"
+  vm_name              = "base-windows-11"
   kubernetes_namespace = var.kubernetes_namespace
   # UEFI, Secure Boot, the TPM and the virtio devices come from the preference
   kubevirt_os_preference       = "windows.11.virtio"

@@ -75,7 +75,6 @@ type FlatConfig struct {
 	BootKeyInterval                 *string             `mapstructure:"boot_key_interval" required:"false" cty:"boot_key_interval" hcl:"boot_key_interval"`
 	ShutdownCommand                 *string             `mapstructure:"shutdown_command" required:"false" cty:"shutdown_command" hcl:"shutdown_command"`
 	ShutdownTimeout                 *string             `mapstructure:"shutdown_timeout" required:"false" cty:"shutdown_timeout" hcl:"shutdown_timeout"`
-	KubernetesName                  *string             `mapstructure:"kubernetes_name" cty:"kubernetes_name" hcl:"kubernetes_name"`
 	KubernetesNamespace             *string             `mapstructure:"kubernetes_namespace" cty:"kubernetes_namespace" hcl:"kubernetes_namespace"`
 	KubernetesNodeSelectors         map[string]string   `mapstructure:"kubernetes_node_selectors" cty:"kubernetes_node_selectors" hcl:"kubernetes_node_selectors"`
 	KubernetesTolerations           []map[string]string `mapstructure:"kubernetes_tolerations" cty:"kubernetes_tolerations" hcl:"kubernetes_tolerations"`
@@ -83,6 +82,7 @@ type FlatConfig struct {
 	SourceUrl                       *string             `mapstructure:"source_url" cty:"source_url" hcl:"source_url"`
 	SourceAWSAccessKeyId            *string             `mapstructure:"source_aws_access_key_id" required:"false" cty:"source_aws_access_key_id" hcl:"source_aws_access_key_id"`
 	SourceAWSSecretAccessKey        *string             `mapstructure:"source_aws_secret_access_key" required:"false" cty:"source_aws_secret_access_key" hcl:"source_aws_secret_access_key"`
+	VirtualMachineName              *string             `mapstructure:"vm_name" cty:"vm_name" hcl:"vm_name"`
 	VirtualMachineDiskSpace         *string             `mapstructure:"vm_disk_space" cty:"vm_disk_space" hcl:"vm_disk_space"`
 	VirtualMachineCPU               *string             `mapstructure:"vm_cpu" required:"false" cty:"vm_cpu" hcl:"vm_cpu"`
 	VirtualMachineMemory            *string             `mapstructure:"vm_memory" required:"false" cty:"vm_memory" hcl:"vm_memory"`
@@ -171,7 +171,6 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"boot_key_interval":            &hcldec.AttrSpec{Name: "boot_key_interval", Type: cty.String, Required: false},
 		"shutdown_command":             &hcldec.AttrSpec{Name: "shutdown_command", Type: cty.String, Required: false},
 		"shutdown_timeout":             &hcldec.AttrSpec{Name: "shutdown_timeout", Type: cty.String, Required: false},
-		"kubernetes_name":              &hcldec.AttrSpec{Name: "kubernetes_name", Type: cty.String, Required: false},
 		"kubernetes_namespace":         &hcldec.AttrSpec{Name: "kubernetes_namespace", Type: cty.String, Required: false},
 		"kubernetes_node_selectors":    &hcldec.AttrSpec{Name: "kubernetes_node_selectors", Type: cty.Map(cty.String), Required: false},
 		"kubernetes_tolerations":       &hcldec.AttrSpec{Name: "kubernetes_tolerations", Type: cty.List(cty.Map(cty.String)), Required: false},
@@ -179,6 +178,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"source_url":                   &hcldec.AttrSpec{Name: "source_url", Type: cty.String, Required: false},
 		"source_aws_access_key_id":     &hcldec.AttrSpec{Name: "source_aws_access_key_id", Type: cty.String, Required: false},
 		"source_aws_secret_access_key": &hcldec.AttrSpec{Name: "source_aws_secret_access_key", Type: cty.String, Required: false},
+		"vm_name":                      &hcldec.AttrSpec{Name: "vm_name", Type: cty.String, Required: false},
 		"vm_disk_space":                &hcldec.AttrSpec{Name: "vm_disk_space", Type: cty.String, Required: false},
 		"vm_cpu":                       &hcldec.AttrSpec{Name: "vm_cpu", Type: cty.String, Required: false},
 		"vm_memory":                    &hcldec.AttrSpec{Name: "vm_memory", Type: cty.String, Required: false},

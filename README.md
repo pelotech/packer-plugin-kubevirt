@@ -85,7 +85,7 @@ COPY --from=ghcr.io/pelotech/packer-plugin-kubevirt:<version> / /root/.config/pa
 
 ```hcl
 source "kubevirt-iso" "ubuntu" {
-  kubernetes_name        = "base-ubuntu-2604"
+  vm_name                = "base-ubuntu-2604"
   kubernetes_namespace   = "packer"
   source_url             = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
   kubevirt_os_preference = "ubuntu"

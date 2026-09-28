@@ -7,7 +7,7 @@ Type: `kubevirt-oci`
 -->
 
 The OCI post-processor is used to publish the disk image produced by the `kubevirt-iso` builder as a [containerDisk](https://kubevirt.io/user-guide/storage/disks_and_volumes/#containerdisk) image in a container registry.
-A Kubernetes job downloads the disk image from the Virtual Machine Export and pushes an image with a single layer, holding the disk at `/disk/<kubernetes_name>.qcow2` and owned by the user and group `107`.
+A Kubernetes job downloads the disk image from the Virtual Machine Export and pushes an image with a single layer, holding the disk at `/disk/<vm_name>.qcow2` and owned by the user and group `107`.
 KubeVirt boots that image with a `containerDisk` volume and CDI imports it with a `registry` source.
 
 The registry has to be reachable from the cluster. The job builds an image archive and pushes it once with `krane push`.
@@ -41,7 +41,7 @@ An image without a tag or with a digest is rejected, the digest is only known on
 - `registry_insecure` (bool) -  Allow a registry served over plain HTTP or with an untrusted certificate
 Defaults to `false`
 
-- `image_format` (string) -  Format of the disk in the image, converted with `qemu-img`. A `raw` disk is stored as `/disk/<kubernetes_name>.img`.
+- `image_format` (string) -  Format of the disk in the image, converted with `qemu-img`. A `raw` disk is stored as `/disk/<vm_name>.img`.
 The job needs scratch space for twice the size of the raw disk
 Accepted values: `qcow2`, `raw` - Defaults to `qcow2`
 

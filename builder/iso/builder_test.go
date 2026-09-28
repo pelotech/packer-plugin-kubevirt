@@ -23,9 +23,9 @@ func TestPrepareRejectsInvalidResources(t *testing.T) {
 	for _, field := range []string{"vm_cpu", "vm_memory"} {
 		builder := new(Builder)
 		_, _, err := builder.Prepare(map[string]interface{}{
-			"kubernetes_name": "base-ubuntu",
-			"vm_disk_space":   "10Gi",
-			field:             "plenty",
+			"vm_name":       "base-ubuntu",
+			"vm_disk_space": "10Gi",
+			field:           "plenty",
 		})
 		if err == nil || !strings.Contains(err.Error(), "invalid '"+field+"' value 'plenty'") {
 			t.Errorf("expected an invalid '%s' error, got: %v", field, err)
@@ -36,9 +36,9 @@ func TestPrepareRejectsInvalidResources(t *testing.T) {
 func TestPrepareRejectsNegativeExportTTL(t *testing.T) {
 	builder := new(Builder)
 	_, _, err := builder.Prepare(map[string]interface{}{
-		"kubernetes_name": "base-ubuntu",
-		"vm_disk_space":   "10Gi",
-		"vm_export_ttl":   "-1h",
+		"vm_name":       "base-ubuntu",
+		"vm_disk_space": "10Gi",
+		"vm_export_ttl": "-1h",
 	})
 	if err == nil || !strings.Contains(err.Error(), "invalid 'vm_export_ttl' value '-1h0m0s'") {
 		t.Errorf("expected an invalid 'vm_export_ttl' error, got: %v", err)
