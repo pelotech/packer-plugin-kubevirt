@@ -61,6 +61,7 @@ Defaults to empty string (image stored at the root of the bucket)
 Defaults to `vm_name` of the builder
 
 - `upload_timeout` (duration string) -  Timeout duration for the download, the conversion and the upload
+A failed job is retried once, within this timeout
 Defaults to `10m`
 
 <!--

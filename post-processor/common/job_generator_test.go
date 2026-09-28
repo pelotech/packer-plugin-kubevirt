@@ -5,6 +5,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/utils/ptr"
 	exportv1 "kubevirt.io/api/export/v1"
 	"strings"
 	"testing"
@@ -79,6 +80,18 @@ func TestGenerateUploaderJobsWithALongExportName(t *testing.T) {
 		// the job name ends up in a label of its pods
 		if problems := validation.IsValidLabelValue(job.Name); len(problems) > 0 {
 			t.Errorf("expected the job name '%s' to be a valid label value, got: %v", job.Name, problems)
+		}
+	}
+}
+
+func TestGenerateUploaderJobsAreRetriedOnce(t *testing.T) {
+	for _, job := range []*batchv1.Job{
+		GenerateS3UploaderJob(newExport(), S3UploaderOptions{Name: "base-ubuntu", Namespace: "packer"}),
+		GenerateOCIUploaderJob(newExport(), newOCIUploaderOptions()),
+	} {
+		// Kubernetes retries a job 6 times when its backoff limit is unset
+		if retries := ptr.Deref(job.Spec.BackoffLimit, 6); retries != 1 {
+			t.Errorf("expected the job '%s' to be retried once, got %d retries", job.Name, retries)
 		}
 	}
 }
