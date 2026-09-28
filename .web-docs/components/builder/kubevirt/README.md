@@ -18,7 +18,8 @@ Windows is generalized by your shutdown command, see [Windows](#windows). `vm_sk
 
 **Required fields**
 
-- `kubernetes_namespace` (string) - Kubernetes namespace used to provision and export virtual machines
+- `kubernetes_namespace` (string) - Kubernetes namespace used to provision and export virtual machines, created when it is missing, see [Permissions](#permissions).
+A DNS-1123 label: at most 63 characters, lowercase letters, digits and `-`, starting and ending with a letter or a digit
 
 - `source_url` (string) - URL of the ISO or cloud image used as the starting point. It is read from inside the cluster, over HTTP or HTTPS.
 With `source_aws_access_key_id` and `source_aws_secret_access_key` it is read from S3, and has to be `https://s3.<region>.amazonaws.com/<bucket>/<key>`
@@ -26,7 +27,11 @@ With `source_aws_access_key_id` and `source_aws_secret_access_key` it is read fr
 - `vm_disk_size` (string) - KubeVirt VM disk size required to install the OS and its packages (e.g. `10Gi`)
 
 - `vm_name` (string) - Name of the Virtual Machine the build creates in the cluster. Its disks, secrets, jobs and Virtual Machine Export are named after it.
-The post-processors also name the S3 object and the DataSource after it, unless `s3_object_name` or `datasource_name` is set
+The post-processors also name the S3 object and the DataSource after it, unless `s3_object_name` or `datasource_name` is set.
+A DNS-1123 label of at most 52 characters: lowercase letters, digits and `-`, starting and ending with a letter or a digit.
+The `virt-sysprep` job is named `<vm_name>-libguestfs`, and Kubernetes copies that name into a label of its pod, limited to 63 characters.
+Dots are refused: KubeVirt cuts the name at its first dot in the label of the pod the port forwarding looks for.
+Builds running at the same time in one namespace need different names, see [Several builds of one template](#several-builds-of-one-template)
 
 - `vm_preference` (string) - KubeVirt VM preference to apply to the VM. List of preferences available [here](https://github.com/kubevirt/common-instancetypes/tree/main/preferences).
 A preference containing `windows` selects the Windows installation flow, any other value selects the Linux one
@@ -216,6 +221,136 @@ build {
 ```
 
 The [Windows 11 example](https://github.com/pelotech/packer-plugin-kubevirt/tree/main/example/windows-11) is a complete template, with its answer files.
+
+### Several builds of one template
+
+Builds of one template run side by side in one namespace when each has its own `vm_name`, since the Virtual Machine and everything the build creates are named after it.
+Two builds with the same `vm_name` collide: the second one fails when it creates the Virtual Machine, and leaves the first one alone.
+
+A `dynamic "source"` block in the `build` block gives each build its own name.
+`vm_name` then goes in that block only: Packer refuses a setting set both there and in the top-level `source` block.
+
+```hcl
+source "kubevirt" "ubuntu" {
+  kubernetes_namespace = "packer"
+  source_url           = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
+  vm_disk_size         = "10Gi"
+  vm_preference        = "ubuntu"
+}
+
+build {
+  dynamic "source" {
+    for_each = ["a", "b"]
+    labels   = ["kubevirt.ubuntu"]
+    content {
+      name    = source.value
+      vm_name = "base-ubuntu-${source.value}"
+    }
+  }
+
+  post-processor "kubevirt-datasource" {
+    datasource_name = "base-ubuntu-${source.name}"
+  }
+}
+```
+
+The label is `<builder type>.<source name>`. Inside `content`, `source.value` is the item of `for_each`. Elsewhere in the build, `source.name` is the `name` of the build.
+
+- Leave `ssh_port` and `winrm_port` unset, so each build forwards its own free local port.
+- Give each build its own destination, or the builds overwrite each other. `datasource_name` and `s3_object_name` default to `vm_name`: when you set them, make them differ per build, as above.
+The OCI `image` needs a tag per build, such as `ghcr.io/pelotech/base-ubuntu:${source.name}`.
+
+### Permissions
+
+The plugin calls the Kubernetes API as the user of your kube context, or as the service account of its pod.
+A build needs this Role in `kubernetes_namespace`, and in `datasource_namespace` when it is another namespace.
+Bind it to that user or service account with a RoleBinding in each namespace.
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: packer-plugin-kubevirt
+  namespace: packer
+rules:
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines"]
+    verbs: ["create", "get", "list", "watch", "patch", "delete"]
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachineinstances"]
+    verbs: ["get"]
+  - apiGroups: ["subresources.kubevirt.io"]
+    resources: ["virtualmachines/stop"]
+    verbs: ["update"]
+  # boot_command only
+  - apiGroups: ["subresources.kubevirt.io"]
+    resources: ["virtualmachineinstances/vnc"]
+    verbs: ["get"]
+  - apiGroups: ["export.kubevirt.io"]
+    resources: ["virtualmachineexports"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "delete"]
+  # list finds the pod of the VM, get and list describe failed pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # kubevirt-datasource only
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datasources"]
+    verbs: ["create", "get", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get"]
+  # only with the OwnerReferencesPermissionEnforcement admission plugin, as on OpenShift
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["export.kubevirt.io"]
+    resources: ["virtualmachineexports/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["batch"]
+    resources: ["jobs/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes/finalizers"]
+    verbs: ["update"]
+```
+
+To let the build create `kubernetes_namespace` when it does not exist yet, also grant `create` on `namespaces` with a ClusterRole and a ClusterRoleBinding.
+Without it, the namespace has to exist before the build.
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: packer-plugin-kubevirt-namespaces
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["create"]
+```
+
+The plugin also reads the version of the cluster at `/version`, open to every user by default.
+
+The `virt-sysprep` job and the jobs of the S3 and OCI post-processors do not call the Kubernetes API.
+They run with the `default` service account, or with `service_account_name`, which needs no Role: it only carries the cloud identity of the upload, such as an IAM role for S3.
 
 ### Windows
 
