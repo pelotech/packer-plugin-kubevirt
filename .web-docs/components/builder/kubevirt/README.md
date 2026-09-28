@@ -1,19 +1,9 @@
----
-description: >
-  The kubevirt builder creates a KubeVirt Virtual Machine from an ISO or a cloud image,
-  provisions it and exports its disk.
-page_title: KubeVirt - Builders
-nav_title: KubeVirt
----
-
-# KubeVirt Builder
-
 Type: `kubevirt`
 
 <!--
   Include a short description about the builder. This is a good place
   to call out what the builder does, and any requirements for the given
-  builder environment. See https://www.packer.io/docs/builders/null
+  builder environment. See https://www.packer.io/docs/builder/null
 -->
 
 The builder is mostly used to create base VM images, an ISO or a cloud image of your choice will be the starting point.
@@ -79,7 +69,8 @@ Defaults to `5m`
 The post-processors download from the export: raise it for several post-processors, big disks or slow uploads
 Defaults to `2h`, the KubeVirt default
 
-- `vm_install_timeout` (duration string) - Time out duration for VM to get its OS installed and its guest agent answering (including cloud-init or Windows Setup)
+- `vm_install_timeout` (duration string) - Time out duration for VM to get its OS installed and its guest agent answering (including cloud-init or Windows Setup).
+With a `boot_command`, it also limits the wait for the VM to run and the typing on the VNC console, then the wait for the OS gets the full duration again
 Defaults to `10m`
 
 - `vm_memory` (string) - Memory requested by the VM
@@ -168,11 +159,12 @@ Defaults to `packer`, the user of the default answer file, when `winrm_username`
 #### Linux
 ```hcl
 source "kubevirt" "ubuntu" {
-  kubernetes_namespace        = "default"
-  kubernetes_node_selector    = {
+  communicator         = "ssh" # Optional, default to 'ssh'
+  kubernetes_namespace = "default"
+  kubernetes_node_selector = {
     "kubevirt.io/schedulable" = "true"
   }
-  kubernetes_tolerations      = [
+  kubernetes_tolerations = [
     {
       key      = "pelo.tech/kvm"
       operator = "Equal"
@@ -180,24 +172,22 @@ source "kubevirt" "ubuntu" {
       effect   = "NoSchedule"
     }
   ]
-  source_url                  = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
-  vm_disk_size                = "10Gi"
-  vm_name                     = "ubuntu"
-  vm_preference               = "ubuntu"
-  # Optional fields
-  communicator                 = "ssh"                            # default to 'ssh'
-  source_aws_access_key_id     = var.source_aws_access_key_id     # default to ""
-  source_aws_secret_access_key = var.source_aws_secret_access_key # default to ""
-  vm_cloud_init                = file("/path/to/cloud-init.yaml") # default to generic cloud-init file
-  vm_cpu                       = "2"                              # default to '4'
-  vm_export_timeout            = "10m"                            # default to '5m'
-  vm_install_timeout           = "15m"                            # default to '10m'
-  vm_memory                    = "4Gi"                            # default to '8Gi'
+  source_aws_access_key_id     = var.source_aws_access_key_id     # Optional, default to ""
+  source_aws_secret_access_key = var.source_aws_secret_access_key # Optional, default to ""
+  source_url                   = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
+  vm_cloud_init                = file("/path/to/cloud-init.yaml") # Optional, default to a generic cloud-init file
+  vm_cpu                       = "2"                              # Optional, default to '4'
+  vm_disk_size                 = "10Gi"
+  vm_export_timeout            = "10m" # Optional, default to '5m'
+  vm_install_timeout           = "15m" # Optional, default to '10m'
+  vm_memory                    = "4Gi" # Optional, default to '8Gi'
+  vm_name                      = "ubuntu"
+  vm_preference                = "ubuntu"
 }
 
- build {
-   sources = ["source.kubevirt.ubuntu"]
- }
+build {
+  sources = ["source.kubevirt.ubuntu"]
+}
 ```
 
 #### Windows

@@ -40,13 +40,6 @@ An image without a tag or with a digest is rejected, the digest is only known on
 
 **Optional**
 
-- Credentials of the registry, the image is pushed anonymously without them:
-  - `registry_secret_name` (string) - Name of an existing secret of type `kubernetes.io/dockerconfigjson` in the namespace of the build.
-  It cannot be used with `registry_username` and `registry_password`
-  - `registry_username` (string) and `registry_password` (string) - Credentials stored as a docker config in a secret owned by the job.
-  Sensitive fields
-  - `service_account_name` (string) - Service Account Name of the job, for the registries of cloud providers that authenticate the workload
-
 - `default_instance_type` (string) -  KubeVirt instance type a Virtual Machine created from the image defaults to.
 It is set on the image as `INSTANCETYPE_KUBEVIRT_IO_DEFAULT_INSTANCETYPE`, CDI turns it into the label `instancetype.kubevirt.io/default-instancetype` on import
 Defaults to empty string (not set on the image)
@@ -68,6 +61,13 @@ Defaults to `false`
 
 - `upload_timeout` (duration string) -  Timeout duration for the download, the conversion and the push
 Defaults to `10m`
+
+- Credentials of the registry, the image is pushed anonymously without them:
+  - `registry_secret_name` (string) - Name of an existing secret of type `kubernetes.io/dockerconfigjson` in the namespace of the build.
+  It cannot be used with `registry_username` and `registry_password`
+  - `registry_username` (string) and `registry_password` (string) - Credentials stored as a docker config in a secret owned by the job.
+  Sensitive fields
+  - `service_account_name` (string) - Service Account Name of the job, for the registries of cloud providers that authenticate the workload
 
 <!--
   A basic example on the usage of the post-processor. Multiple examples

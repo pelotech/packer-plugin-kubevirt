@@ -23,7 +23,7 @@ A Kubernetes job downloads the disk image from the Virtual Machine Export and up
 
 **Required**
 
-- `s3_bucket` (string) -  AWS S3 Bucket where exported VM images are stored
+- `s3_bucket` (string) -  S3 bucket where exported VM images are stored
 
 - `s3_region` (string) -  S3 region used to initialize the AWS CLI uploading the exported VM image
 
@@ -54,7 +54,7 @@ Defaults to `false`
 Must be an `http` or `https` URL, `s3_region` is then the region configured on that storage
 Defaults to empty string (AWS S3)
 
-- `s3_key_prefix` (string) -  AWS S3 Key prefix for all the exported VM images
+- `s3_key_prefix` (string) -  Key prefix for all the exported VM images
 Defaults to empty string (image stored at the root of the bucket)
 
 - `s3_object_name` (string) -  Name of the image in the bucket, without its extension. Letters, digits, `.`, `_`, `+` and `-` are accepted

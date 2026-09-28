@@ -81,7 +81,7 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 	}
 
 	if (p.config.S3AccessKeyId == "" || p.config.S3SecretAccessKey == "") && p.config.ServiceAccountName == "" {
-		return fmt.Errorf("either S3 access keys or service account name must be provided")
+		return fmt.Errorf("either 's3_access_key_id' and 's3_secret_access_key' or 'service_account_name' must be set")
 	}
 
 	return nil

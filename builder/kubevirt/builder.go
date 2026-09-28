@@ -41,11 +41,11 @@ type Config struct {
 	KubernetesNamespace            string              `mapstructure:"kubernetes_namespace"`
 	KubernetesNodeSelector         map[string]string   `mapstructure:"kubernetes_node_selector"`
 	KubernetesTolerations          []map[string]string `mapstructure:"kubernetes_tolerations"`
-	VirtualMachinePreference       string              `mapstructure:"vm_preference"`
 	SourceUrl                      string              `mapstructure:"source_url"`
 	SourceAWSAccessKeyId           string              `mapstructure:"source_aws_access_key_id" required:"false"`
 	SourceAWSSecretAccessKey       string              `mapstructure:"source_aws_secret_access_key" required:"false"`
 	VirtualMachineName             string              `mapstructure:"vm_name"`
+	VirtualMachinePreference       string              `mapstructure:"vm_preference"`
 	VirtualMachineDiskSize         string              `mapstructure:"vm_disk_size"`
 	VirtualMachineCPU              string              `mapstructure:"vm_cpu" required:"false"`
 	VirtualMachineMemory           string              `mapstructure:"vm_memory" required:"false"`

@@ -26,12 +26,12 @@ integration {
   component {
     type = "builder"
     name = "KubeVirt"
-    slug = "builder"
+    slug = "kubevirt"
   }
   component {
     type = "post-processor"
     name = "KubeVirt S3"
-    slug = "post-processor"
+    slug = "s3"
   }
   component {
     type = "post-processor"
