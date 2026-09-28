@@ -6,7 +6,7 @@ packer {
     }
     kubevirt = {
       source  = "github.com/pelotech/kubevirt"
-      version = ">= 0.2.0" # x-release-please-version
+      version = ">= 0.2.1" # x-release-please-version
     }
   }
 }

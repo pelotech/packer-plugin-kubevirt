@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/pelotech/packer-plugin-kubevirt/compare/v0.2.0...v0.2.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* build in an existing namespace without the right to create namespaces ([#126](https://github.com/pelotech/packer-plugin-kubevirt/issues/126)) ([4e26e60](https://github.com/pelotech/packer-plugin-kubevirt/commit/4e26e604cdb815e2794c4275301e38bae7e946bc))
+* do not report an export that is already gone as an error ([#121](https://github.com/pelotech/packer-plugin-kubevirt/issues/121)) ([79ed6b8](https://github.com/pelotech/packer-plugin-kubevirt/commit/79ed6b81adbf5869267cfada282c3a075b71596a))
+* give up a failing Job after one retry ([#122](https://github.com/pelotech/packer-plugin-kubevirt/issues/122)) ([fa2be57](https://github.com/pelotech/packer-plugin-kubevirt/commit/fa2be57608a0ffb66e88713030600096c477484e))
+* keep the account of the build when virt-sysprep generalizes ([#123](https://github.com/pelotech/packer-plugin-kubevirt/issues/123)) ([569554b](https://github.com/pelotech/packer-plugin-kubevirt/commit/569554b32646ce5fbe2e05e17f2ed4dfa89c4deb))
+* reject an invalid toleration when the template is validated ([#124](https://github.com/pelotech/packer-plugin-kubevirt/issues/124)) ([100686b](https://github.com/pelotech/packer-plugin-kubevirt/commit/100686b74cb20b2eb317416190e33908be887ed6))
+* size the Windows install media separately from the disk ([#128](https://github.com/pelotech/packer-plugin-kubevirt/issues/128)) ([a2c42b0](https://github.com/pelotech/packer-plugin-kubevirt/commit/a2c42b09d95690201c9e07a21863540ab0e92ebf))
+
 ## [0.2.0](https://github.com/pelotech/packer-plugin-kubevirt/compare/v0.1.0...v0.2.0) (2026-09-28)
 
 
