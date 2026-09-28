@@ -3,6 +3,7 @@ package common
 import (
 	"encoding/base64"
 	"encoding/json"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"slices"
@@ -57,6 +58,17 @@ func TestGenerateOCIUploaderJobIsOwnedByExport(t *testing.T) {
 	if owner == nil || owner.APIVersion != "export.kubevirt.io/v1" || owner.Kind != "VirtualMachineExport" || owner.UID != export.UID {
 		t.Errorf("expected the job to be owned by the 'v1' export, got: %v", job.OwnerReferences)
 	}
+}
+
+func TestGenerateOCIUploaderJobsOfTheSameExport(t *testing.T) {
+	opts := newOCIUploaderOptions()
+	// the docker config is then read from the secret of the job
+	opts.RegistryUsername, opts.RegistryPassword = "packer", "secret"
+
+	jobs := [2]*batchv1.Job{GenerateOCIUploaderJob(newExport(), opts), GenerateOCIUploaderJob(newExport(), opts)}
+	secrets := [2]*corev1.Secret{GenerateOCIUploaderSecret(jobs[0], opts), GenerateOCIUploaderSecret(jobs[1], opts)}
+
+	checkJobsOfTheSameExport(t, "oci-uploader-base-ubuntu-", jobs, secrets)
 }
 
 func TestGenerateOCIUploaderJobWithQcow2(t *testing.T) {

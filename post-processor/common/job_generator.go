@@ -4,7 +4,9 @@ import (
 	"fmt"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/validate/content"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/rand"
 	exportv1 "kubevirt.io/api/export/v1"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
@@ -21,8 +23,10 @@ const (
 	tempVolumeMountPath          = "/tmp"
 	exportTokenEnvVar            = "EXPORT_TOKEN"
 	exportServerPEMCert          = "cert.pem"
-	jobSecretSuffix              = "s3-uploader"
 	qemuImgImage                 = "quay.io/kubevirt/cdi-importer:v1.66.1"
+	// the job name ends up in a label of its pods
+	jobNameMaxLength    = content.LabelValueMaxLength
+	jobNameSuffixLength = 5
 )
 
 var supportedImageFormats = []string{"qcow2", "vmdk", "vhdx", "vdi"}
@@ -93,7 +97,7 @@ func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.
 
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      buildJobSecretName(opts.Name),
+			Name:      job.Name,
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job")),
@@ -103,8 +107,13 @@ func GenerateS3UploaderSecret(job *batchv1.Job, opts S3UploaderOptions) *corev1.
 	}
 }
 
-func buildJobSecretName(name string) string {
-	return fmt.Sprintf("%s-%s", name, jobSecretSuffix)
+// buildJobName adds a random suffix like metadata.generateName does, so that each job of an export has its own name
+func buildJobName(prefix, exportName string) string {
+	base := fmt.Sprintf("%s-%s-", prefix, exportName)
+	if len(base) > jobNameMaxLength-jobNameSuffixLength {
+		base = base[:jobNameMaxLength-jobNameSuffixLength]
+	}
+	return base + rand.String(jobNameSuffixLength)
 }
 
 func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl string, raw bool) corev1.Container {
@@ -202,9 +211,12 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 		serviceAccountName = *opts.ServiceAccountName
 	}
 
+	// its secret has the same name
+	jobName := buildJobName("s3-uploader", opts.Name)
+
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("s3-uploader-%s", opts.Name),
+			Name:      jobName,
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),
@@ -215,7 +227,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccountName,
 					InitContainers: append([]corev1.Container{
-						generateDownloadContainer(buildJobSecretName(opts.Name), downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
+						generateDownloadContainer(jobName, downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
 					}, convertContainers...),
 					Containers: []corev1.Container{
 						{
@@ -230,7 +242,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 								{
 									SecretRef: &corev1.SecretEnvSource{
 										LocalObjectReference: corev1.LocalObjectReference{
-											Name: buildJobSecretName(opts.Name),
+											Name: jobName,
 										},
 									},
 								},
@@ -254,7 +266,7 @@ func GenerateS3UploaderJob(export *exportv1.VirtualMachineExport, opts S3Uploade
 							Name: certVolumeMountVolumeMapping,
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
-									SecretName: buildJobSecretName(opts.Name),
+									SecretName: jobName,
 									Items: []corev1.KeyToPath{
 										{
 											Key:  exportServerPEMCert,

@@ -18,7 +18,6 @@ const (
 	dockerConfigVolumeMountPath          = "/docker-config"
 	dockerConfigFilename                 = "config.json"
 	dockerHubRegistry                    = "https://index.docker.io/v1/"
-	ociJobSecretSuffix                   = "oci-uploader"
 	pushImage                            = "gcr.io/go-containerregistry/krane:v0.22.1"
 	imageArchiveFilename                 = "image.tar"
 	imageConfigEnvVar                    = "IMAGE_CONFIG"
@@ -73,10 +72,6 @@ func findRegistry(image string) string {
 	return dockerHubRegistry
 }
 
-func buildOCIJobSecretName(name string) string {
-	return fmt.Sprintf("%s-%s", name, ociJobSecretSuffix)
-}
-
 func GenerateOCIUploaderSecret(job *batchv1.Job, opts OCIUploaderOptions) *corev1.Secret {
 	stringData := map[string]string{
 		exportTokenEnvVar:   opts.ExportServerToken,
@@ -96,7 +91,7 @@ func GenerateOCIUploaderSecret(job *batchv1.Job, opts OCIUploaderOptions) *corev
 
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      buildOCIJobSecretName(opts.Name),
+			Name:      job.Name,
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, batchv1.SchemeGroupVersion.WithKind("Job")),
@@ -155,6 +150,8 @@ func generateConvertScript(opts OCIUploaderOptions, downloadedFilename string) s
 
 func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploaderOptions) *batchv1.Job {
 	downloadedFilename := fmt.Sprintf("%s.img", opts.Name)
+	// its secret has the same name
+	jobName := buildJobName("oci-uploader", opts.Name)
 
 	pushCommand := []string{"krane", "push", path.Join(tempVolumeMountPath, imageArchiveFilename), opts.Image}
 	if opts.RegistryInsecure {
@@ -172,7 +169,7 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 			Name: certVolumeMountVolumeMapping,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: buildOCIJobSecretName(opts.Name),
+					SecretName: jobName,
 					Items: []corev1.KeyToPath{
 						{
 							Key:  exportServerPEMCert,
@@ -193,7 +190,7 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 
 	dockerConfigSecretName := opts.RegistrySecretName
 	if opts.RegistryUsername != "" && opts.RegistryPassword != "" {
-		dockerConfigSecretName = buildOCIJobSecretName(opts.Name)
+		dockerConfigSecretName = jobName
 	}
 	if dockerConfigSecretName != "" {
 		volumes = append(volumes, corev1.Volume{
@@ -222,7 +219,7 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("oci-uploader-%s", opts.Name),
+			Name:      jobName,
 			Namespace: opts.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),
@@ -233,7 +230,7 @@ func GenerateOCIUploaderJob(export *exportv1.VirtualMachineExport, opts OCIUploa
 				Spec: corev1.PodSpec{
 					ServiceAccountName: opts.ServiceAccountName,
 					InitContainers: []corev1.Container{
-						generateDownloadContainer(buildOCIJobSecretName(opts.Name), downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
+						generateDownloadContainer(jobName, downloadedFilename, opts.ExportServerUrl, opts.ImageFormat != ""),
 						generateConvertContainer(
 							[]string{"/bin/sh", "-c", generateConvertScript(opts, downloadedFilename)},
 							[]corev1.EnvVar{{Name: imageConfigEnvVar, Value: generateImageConfig(opts)}},
