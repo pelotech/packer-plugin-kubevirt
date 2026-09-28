@@ -1,7 +1,10 @@
 package common
 
 import (
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	exportv1 "kubevirt.io/api/export/v1"
 	"strings"
 	"testing"
@@ -10,6 +13,73 @@ import (
 func newExport() *exportv1.VirtualMachineExport {
 	return &exportv1.VirtualMachineExport{
 		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
+	}
+}
+
+func findSecretNames(podSpec corev1.PodSpec) []string {
+	var names []string
+	for _, container := range append(podSpec.InitContainers, podSpec.Containers...) {
+		for _, env := range container.Env {
+			if env.ValueFrom != nil && env.ValueFrom.SecretKeyRef != nil {
+				names = append(names, env.ValueFrom.SecretKeyRef.Name)
+			}
+		}
+		for _, envFrom := range container.EnvFrom {
+			if envFrom.SecretRef != nil {
+				names = append(names, envFrom.SecretRef.Name)
+			}
+		}
+	}
+	for _, volume := range podSpec.Volumes {
+		if volume.Secret != nil {
+			names = append(names, volume.Secret.SecretName)
+		}
+	}
+	return names
+}
+
+// checkJobsOfTheSameExport checks that two post-processors of the same type can run on one export
+func checkJobsOfTheSameExport(t *testing.T, prefix string, jobs [2]*batchv1.Job, secrets [2]*corev1.Secret) {
+	t.Helper()
+	if jobs[0].Name == jobs[1].Name {
+		t.Errorf("expected each job to have its own name, got '%s' twice", jobs[0].Name)
+	}
+	if secrets[0].Name == secrets[1].Name {
+		t.Errorf("expected each secret to have its own name, got '%s' twice", secrets[0].Name)
+	}
+	for index, job := range jobs {
+		if !strings.HasPrefix(job.Name, prefix) {
+			t.Errorf("expected the job name to start with '%s', got: '%s'", prefix, job.Name)
+		}
+		for _, name := range findSecretNames(job.Spec.Template.Spec) {
+			if name != secrets[index].Name {
+				t.Errorf("expected the job '%s' to read its secret '%s', got: '%s'", job.Name, secrets[index].Name, name)
+			}
+		}
+	}
+}
+
+func TestGenerateS3UploaderJobsOfTheSameExport(t *testing.T) {
+	opts := S3UploaderOptions{Name: "base-ubuntu", Namespace: "packer"}
+
+	jobs := [2]*batchv1.Job{GenerateS3UploaderJob(newExport(), opts), GenerateS3UploaderJob(newExport(), opts)}
+	secrets := [2]*corev1.Secret{GenerateS3UploaderSecret(jobs[0], opts), GenerateS3UploaderSecret(jobs[1], opts)}
+
+	checkJobsOfTheSameExport(t, "s3-uploader-base-ubuntu-", jobs, secrets)
+}
+
+func TestGenerateUploaderJobsWithALongExportName(t *testing.T) {
+	export := newExport()
+	export.Name = strings.Repeat("a", validation.DNS1123LabelMaxLength)
+
+	for _, job := range []*batchv1.Job{
+		GenerateS3UploaderJob(export, S3UploaderOptions{Name: export.Name, Namespace: "packer"}),
+		GenerateOCIUploaderJob(export, OCIUploaderOptions{Name: export.Name, Namespace: "packer"}),
+	} {
+		// the job name ends up in a label of its pods
+		if problems := validation.IsValidLabelValue(job.Name); len(problems) > 0 {
+			t.Errorf("expected the job name '%s' to be a valid label value, got: %v", job.Name, problems)
+		}
 	}
 }
 
