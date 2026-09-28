@@ -241,4 +241,9 @@ Sysprep takes WinRM down while it runs, so Packer loses the connection before th
 Set `PersistAllDeviceInstalls` to `true` in the answer file given to Sysprep: otherwise generalize uninstalls the network adapter
 that carries WinRM, and Sysprep stops there without shutting Windows down.
 
+**KubeVirt `OCIExport` feature gate.** On KubeVirt 1.9.0 with this Alpha gate turned on, the export of a VM with a persistent TPM or EFI
+stays `Pending` and serves nothing ([kubevirt/kubevirt#19084](https://github.com/kubevirt/kubevirt/issues/19084)).
+The `windows.11` preferences give both, so the build waits until `vm_export_timeout`. Leave the gate off, or use a KubeVirt release with the fix
+([kubevirt/kubevirt#19085](https://github.com/kubevirt/kubevirt/pull/19085), not in a 1.9 release as of 2026-09-28).
+
 **Default answer file.** The one of the source code installs Windows 10 Pro on a BIOS machine. Bring your own for anything else.
