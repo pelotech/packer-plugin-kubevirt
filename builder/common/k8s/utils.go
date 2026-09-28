@@ -15,7 +15,7 @@ import (
 	"k8s.io/client-go/tools/portforward"
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/client-go/transport/spdy"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	kvcorev1 "kubevirt.io/client-go/kubevirt/typed/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"packer-plugin-kubevirt/builder/common"
 	"strings"
 	"time"
 )
@@ -31,7 +32,6 @@ import (
 const (
 	PortFowardTimeout              = 5 * time.Second
 	PortForwardRetryInterval       = time.Second
-	PortForwardAddress             = "127.0.0.1"
 	VirtualMachineStopPollInterval = time.Second
 	ContainerLogsTailLines         = 10
 
@@ -94,7 +94,7 @@ func runPortForward(clients *Clients, podName, namespace string, ports []string,
 	}
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: roundTripper}, http.MethodPost, url)
 
-	forwarder, err := portforward.NewOnAddresses(dialer, []string{PortForwardAddress}, ports, stop, ready, os.Stdout, os.Stderr)
+	forwarder, err := portforward.NewOnAddresses(dialer, []string{common.VirtualMachineHost}, ports, stop, ready, os.Stdout, os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func describePod(client kubernetes.Interface, pod *corev1.Pod) string {
 func readContainerLogs(client kubernetes.Interface, pod *corev1.Pod, container string) string {
 	logs, err := client.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
 		Container: container,
-		TailLines: pointer.Int64(ContainerLogsTailLines),
+		TailLines: ptr.To[int64](ContainerLogsTailLines),
 	}).DoRaw(context.Background())
 	if err != nil {
 		return fmt.Sprintf("failed to read logs: %s", err)

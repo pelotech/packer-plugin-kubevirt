@@ -18,7 +18,7 @@ const (
 func GenerateTokenSecret(export *exportv1.VirtualMachineExport, token string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      buildSecretName(export.Spec.Source.Name, tokenSecretSuffix),
+			Name:      *export.Spec.TokenSecretRef,
 			Namespace: export.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(export, exportv1.SchemeGroupVersion.WithKind(k8s.VirtualMachineExportKind)),

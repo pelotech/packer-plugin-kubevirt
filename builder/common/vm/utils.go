@@ -6,7 +6,7 @@ type OsFamily int32
 
 const (
 	Linux   OsFamily = 0
-	Windows          = 1
+	Windows OsFamily = 1
 )
 
 func GetOSFamily(preference string) OsFamily {

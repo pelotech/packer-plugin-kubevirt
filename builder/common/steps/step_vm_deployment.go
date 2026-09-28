@@ -45,21 +45,10 @@ func (s *StepDeployVM) Run(_ context.Context, state multistep.StateBag) multiste
 		}
 	}
 
-	startupScriptSecret, err := generator.GenerateStartupScriptSecret(vm, s.VmOptions)
-	if err != nil {
-		return appContext.Halt(fmt.Errorf("failed to generate startup script secret spec for Virtual Machine %s/%s: %s", ns, name, err))
-	}
+	startupScriptSecret := generator.GenerateStartupScriptSecret(vm, s.VmOptions)
 	_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(context.TODO(), startupScriptSecret, metav1.CreateOptions{})
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("failed to create startup script secret for Virtual Machine %s/%s: %s", ns, name, err))
-	}
-
-	if s.VmOptions.Credentials != nil {
-		userCredentialsSecret := generator.GenerateUserCredentialsSecret(vm, s.VmOptions)
-		_, err = s.Clients.Kubernetes.CoreV1().Secrets(ns).Create(context.TODO(), userCredentialsSecret, metav1.CreateOptions{})
-		if err != nil {
-			return appContext.Halt(fmt.Errorf("failed to create user credentials secret for Virtual Machine %s/%s: %s", ns, name, err))
-		}
 	}
 
 	return multistep.ActionContinue

@@ -7,7 +7,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"kubevirt.io/client-go/containerizeddataimporter"
 	"kubevirt.io/client-go/kubevirt"
-	"os"
 )
 
 const (
@@ -23,24 +22,10 @@ type Clients struct {
 }
 
 func GetKubevirtClient() (*Clients, error) {
-	var config *restclient.Config
-
-	_, ciEnvExists := os.LookupEnv("CI")
-	_, configEnvExists := os.LookupEnv(clientcmd.RecommendedConfigPathEnvVar)
-	configFile, err := os.Stat(clientcmd.RecommendedHomeFile)
-	if ciEnvExists || configEnvExists || configFile != nil {
-		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-		loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
-		overrides := &clientcmd.ConfigOverrides{ClusterDefaults: clientcmd.ClusterDefaults}
-		config, err = clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, overrides, os.Stdin).ClientConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create default kube config: %w", err)
-		}
-	} else {
-		config, err = restclient.InClusterConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create in-cluster kube client: %w", err)
-		}
+	// the kube config of the environment, or the service account of the pod when there is none
+	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load the kube config: %w", err)
 	}
 
 	kubeClient, err := kubernetes.NewForConfig(config)

@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
-	vmctx "packer-plugin-kubevirt/builder/common/vm"
 	"reflect"
 	"strings"
 	"testing"
@@ -40,11 +39,9 @@ func TestStepExportVMOnlyExports(t *testing.T) {
 	})
 	kubeClient := k8sfake.NewSimpleClientset()
 
-	osFamily := vmctx.Linux
 	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
 	appContext.Put(common.PackerUi, packersdk.TestUi(t))
 	appContext.Put(common.VirtualMachine, vm)
-	appContext.Put(common.VirtualMachineOsFamily, &osFamily)
 
 	step := &StepExportVM{Clients: &k8s.Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
 	if action := step.Run(context.Background(), appContext.State); action != multistep.ActionContinue {

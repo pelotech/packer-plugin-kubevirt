@@ -19,28 +19,11 @@ import (
 )
 
 func TestStepGeneralizeRunsSysprepOnceVirtualMachineIsStopped(t *testing.T) {
-	vm := &kubevirtv1.VirtualMachine{
-		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
-		Spec:       kubevirtv1.VirtualMachineSpec{Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{}},
-		Status:     kubevirtv1.VirtualMachineStatus{PrintableStatus: kubevirtv1.VirtualMachineStatusRunning},
-	}
-
-	kubevirtClient := kubevirtfake.NewSimpleClientset(vm)
-	vmClient := kubevirtClient.KubevirtV1().VirtualMachines(vm.Namespace)
-	kubevirtClient.PrependReactor("put", "virtualmachines/stop", func(k8stesting.Action) (bool, runtime.Object, error) {
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			stoppedVm := vm.DeepCopy()
-			stoppedVm.Status.PrintableStatus = kubevirtv1.VirtualMachineStatusStopped
-			_, _ = vmClient.UpdateStatus(context.Background(), stoppedVm, metav1.UpdateOptions{})
-		}()
-		return true, nil, nil
-	})
+	step, state, kubevirtClient, kubeClient := newGeneralizeStep(t, vmctx.Linux)
 
 	var statusAtJobCreation kubevirtv1.VirtualMachinePrintableStatus
-	kubeClient := k8sfake.NewSimpleClientset()
 	kubeClient.PrependReactor("create", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
-		currentVm, err := vmClient.Get(context.Background(), vm.Name, metav1.GetOptions{})
+		currentVm, err := kubevirtClient.KubevirtV1().VirtualMachines("packer").Get(context.Background(), "base-vm", metav1.GetOptions{})
 		if err != nil {
 			return true, nil, err
 		}
@@ -48,14 +31,7 @@ func TestStepGeneralizeRunsSysprepOnceVirtualMachineIsStopped(t *testing.T) {
 		return true, nil, errors.New("halt the step once the job creation is reached")
 	})
 
-	osFamily := vmctx.Linux
-	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
-	appContext.Put(common.PackerUi, packersdk.TestUi(t))
-	appContext.Put(common.VirtualMachine, vm)
-	appContext.Put(common.VirtualMachineOsFamily, &osFamily)
-
-	step := &StepGeneralize{Clients: &k8s.Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
-	action := step.Run(context.Background(), appContext.State)
+	action := step.Run(context.Background(), state)
 
 	if action != multistep.ActionHalt {
 		t.Fatalf("expected the step to halt on job creation, got action: %v", action)
@@ -93,9 +69,8 @@ func newGeneralizeStep(t *testing.T, osFamily vmctx.OsFamily) (*StepGeneralize, 
 	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
 	appContext.Put(common.PackerUi, packersdk.TestUi(t))
 	appContext.Put(common.VirtualMachine, vm)
-	appContext.Put(common.VirtualMachineOsFamily, &osFamily)
 
-	step := &StepGeneralize{Clients: &k8s.Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient}, VmExportTimeOut: 5 * time.Second}
+	step := &StepGeneralize{Clients: &k8s.Clients{Kubernetes: kubeClient, Kubevirt: kubevirtClient}, OsFamily: osFamily, VmExportTimeOut: 5 * time.Second}
 	return step, appContext.State, kubevirtClient, kubeClient
 }
 

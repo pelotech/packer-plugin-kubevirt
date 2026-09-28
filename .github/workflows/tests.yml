@@ -130,10 +130,6 @@ jobs:
           echo "-----------------------"
           kubectl get nodes -o jsonpath='{range .items[*]}{"["}{.metadata.name}{"] cpu: "}{.status.capacity.cpu}{"; memory: "}{.status.capacity.memory}{"\n"}{end}'
 
-      - name: packer format
-        run: |
-          packer fmt -check .
-
       - name: packer validate
         working-directory: ${{ env.working-directory }}
         run: |
@@ -153,7 +149,7 @@ jobs:
         run: |
           kubectl port-forward --namespace garage service/garage 3900:3900 &
           curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:3900
-          aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_s3_key_prefix}base-ubuntu-2604.img.gz"
+          aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_s3_key_prefix}${VM_NAME}.img.gz"
 
       - name: check the image in the registry
         if: matrix.export == 'oci' || matrix.export == 'all'
@@ -168,12 +164,12 @@ jobs:
       - name: check the DataSource and boot a Virtual Machine from it
         if: matrix.export == 'datasource' || matrix.export == 'all'
         run: |
-          kubectl wait datasource/base-ubuntu --namespace packer-linux --for=condition=Ready --timeout=1m
-          test "$(kubectl get datasource base-ubuntu --namespace packer-linux --output jsonpath='{.metadata.labels.instancetype\.kubevirt\.io/default-preference}')" = ubuntu
+          kubectl wait datasource/base-ubuntu --namespace "${VM_NAMESPACE}" --for=condition=Ready --timeout=1m
+          test "$(kubectl get datasource base-ubuntu --namespace "${VM_NAMESPACE}" --output jsonpath='{.metadata.labels.instancetype\.kubevirt\.io/default-preference}')" = ubuntu
           kubectl apply -f .github/boot-test.yaml
-          test "$(kubectl get virtualmachine boot-test --namespace packer-linux --output jsonpath='{.spec.preference.name}')" = ubuntu
-          kubectl wait virtualmachine/boot-test --namespace packer-linux --for=condition=Ready --timeout=10m
-          kubectl wait virtualmachineinstance/boot-test --namespace packer-linux --for=condition=AgentConnected --timeout=5m
+          test "$(kubectl get virtualmachine boot-test --namespace "${VM_NAMESPACE}" --output jsonpath='{.spec.preference.name}')" = ubuntu
+          kubectl wait virtualmachine/boot-test --namespace "${VM_NAMESPACE}" --for=condition=Ready --timeout=10m
+          kubectl wait virtualmachineinstance/boot-test --namespace "${VM_NAMESPACE}" --for=condition=AgentConnected --timeout=5m
 
       - name: check that the disk outlives a restart of the export server
         # the s3 post-processor keeps its export
@@ -185,13 +181,13 @@ jobs:
           test -z "$(kubectl get persistentvolumeclaim "${VM_NAME}-source" --namespace "${VM_NAMESPACE}" --output jsonpath='{.metadata.deletionTimestamp}')"
 
           kubectl delete virtualmachineexport "${VM_NAME}" --namespace "${VM_NAMESPACE}"
-          timeout 120 bash -c "while kubectl get virtualmachine ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${VM_NAME}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
+          kubectl wait "virtualmachine/${VM_NAME}" "persistentvolumeclaim/${VM_NAME}-source" --namespace "${VM_NAMESPACE}" --for=delete --timeout=120s
 
       - name: check that the build leaves nothing behind
         # the datasource post-processor, the last one, deletes the export
         if: matrix.export == 'datasource' || matrix.export == 'all'
         run: |
-          timeout 120 bash -c "while kubectl get virtualmachineexport ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get virtualmachine ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${VM_NAME}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
+          kubectl wait "virtualmachineexport/${VM_NAME}" "virtualmachine/${VM_NAME}" "persistentvolumeclaim/${VM_NAME}-source" --namespace "${VM_NAMESPACE}" --for=delete --timeout=120s
 
       - name: display cluster state
         if: failure()

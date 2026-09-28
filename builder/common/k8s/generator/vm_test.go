@@ -40,29 +40,21 @@ func TestGenerateStartupScriptSecretForWindows(t *testing.T) {
 		CPU:       "2",
 		Memory:    "4Gi",
 	})
-	defaultAutounattend, err := scripts.ReadFile("scripts/autounattend.xml")
-	if err != nil {
-		t.Fatalf("failed to read the default answer file: %v", err)
-	}
-
 	for name, test := range map[string]struct {
 		autounattend string
 		expected     string
 	}{
 		"custom answer file":  {autounattend: "<unattend>custom</unattend>", expected: "<unattend>custom</unattend>"},
-		"default answer file": {autounattend: "", expected: string(defaultAutounattend)},
+		"default answer file": {autounattend: "", expected: defaultAutounattend},
 	} {
 		t.Run(name, func(t *testing.T) {
-			secret, err := GenerateStartupScriptSecret(virtualMachine, VirtualMachineOptions{
+			secret := GenerateStartupScriptSecret(virtualMachine, VirtualMachineOptions{
 				Name:             "base-windows",
 				Namespace:        "packer",
 				Preference:       "windows.10.virtio",
 				OsFamily:         vm.Windows,
 				UserProvisioning: UserProvisioning{Autounattend: test.autounattend},
 			})
-			if err != nil {
-				t.Fatalf("failed to generate the startup script secret: %v", err)
-			}
 			if autounattend := secret.StringData["autounattend.xml"]; autounattend != test.expected {
 				t.Errorf("expected answer file '%.40s', got: '%.40s'", test.expected, autounattend)
 			}

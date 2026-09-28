@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
@@ -17,11 +18,6 @@ import (
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	"time"
-)
-
-const (
-	ExportTokenHeader = "x-kubevirt-export-token"
-	secretTokenLength = 20
 )
 
 type StepExportVM struct {
@@ -49,7 +45,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 	}
 	appContext.Put(common.VirtualMachineOwnedByExport, true)
 
-	exportToken := common.GenerateRandomPassword(secretTokenLength)
+	exportToken := rand.Text()
 	err = s.createTokenSecret(export, exportToken)
 	if err != nil {
 		return appContext.Halt(fmt.Errorf("failed to create Virtual Machine Export secret %s/%s: %s", vm.Namespace, vm.Name, err))

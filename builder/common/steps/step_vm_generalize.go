@@ -15,6 +15,7 @@ import (
 
 type StepGeneralize struct {
 	Clients         *k8s.Clients
+	OsFamily        vmctx.OsFamily
 	SkipVirtSysprep bool
 	VmExportTimeOut time.Duration
 }
@@ -35,12 +36,10 @@ func (s *StepGeneralize) Run(_ context.Context, state multistep.StateBag) multis
 		return appContext.Halt(fmt.Errorf("failed to stop Virtual Machine %s/%s: %s", vm.Namespace, vm.Name, err))
 	}
 
-	osFamily := *appContext.GetVirtualMachineOSFamily()
-	if vmctx.Linux == osFamily && !s.SkipVirtSysprep {
+	if vmctx.Linux == s.OsFamily && !s.SkipVirtSysprep {
 		ui.Say(fmt.Sprintf("generify-ing with 'virt-sysprep' Virtual Machine for export %s/%s...", vm.Namespace, vm.Name))
 
-		pvcName := generator.BuildDataVolumeName(vm.Name, generator.SourceDataVolumeSuffix)
-		job := generator.GenerateGuestFSJob(vm, pvcName)
+		job := generator.GenerateGuestFSJob(vm)
 
 		job, err = s.Clients.Kubernetes.BatchV1().Jobs(vm.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		if err != nil {

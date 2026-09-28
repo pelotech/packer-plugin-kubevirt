@@ -86,7 +86,7 @@ jobs:
       - name: check that the build leaves nothing behind
         # the s3 post-processor, the only one, deletes the export
         run: |
-          timeout 120 bash -c "while kubectl get virtualmachineexport ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get virtualmachine ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${VM_NAME}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
+          kubectl wait "virtualmachineexport/${VM_NAME}" "virtualmachine/${VM_NAME}" "persistentvolumeclaim/${VM_NAME}-source" --namespace "${VM_NAMESPACE}" --for=delete --timeout=120s
 
       - name: check that the image holds a generalized Windows
         run: |

@@ -5,7 +5,6 @@ package kubevirt
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer-plugin-sdk/bootcommand"
@@ -69,8 +68,8 @@ func (b *Builder) ConfigSpec() hcldec.ObjectSpec {
 	return b.config.FlatMapstructure().HCL2Spec()
 }
 
-// the generalize Job is named <vm_name>-libguestfs, and Kubernetes copies a Job name into a label of its pods
-const maxVirtualMachineNameLength = content.LabelValueMaxLength - len("-libguestfs")
+// Kubernetes copies the name of the generalize Job into a label of its pods
+const maxVirtualMachineNameLength = content.LabelValueMaxLength - len(generator.GuestFSJobNameSuffix)
 
 func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings []string, err error) {
 	err = config.Decode(&b.config, &config.DecodeOpts{
@@ -220,12 +219,21 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 	appContext.Put(buildercommon.PackerHook, hook)
 	appContext.Put(buildercommon.PackerUi, ui)
 
-	osFamily := vm.GetOSFamily(b.config.VirtualMachinePreference)
-	appContext.Put(buildercommon.VirtualMachineOsFamily, &osFamily)
-	appContext.Put(buildercommon.Preference, b.config.VirtualMachinePreference)
-	appContext.Put(buildercommon.DiskSize, b.config.VirtualMachineDiskSize)
+	runner := commonsteps.NewRunner(b.steps(), b.config.PackerConfig, ui)
+	runner.Run(ctx, state)
 
-	steps := []multistep.Step{
+	// a cancelled step halts without an error, and leaves no export to build an artifact from
+	if err := appContext.BuildError(); err != nil {
+		return nil, err
+	}
+
+	return appContext.BuildArtifact(builderId, b.config.VirtualMachinePreference, b.config.VirtualMachineDiskSize), nil
+}
+
+func (b *Builder) steps() []multistep.Step {
+	osFamily := vm.GetOSFamily(b.config.VirtualMachinePreference)
+
+	return []multistep.Step{
 		&stepDef.StepDeployVM{
 			Clients: b.clients,
 			VmOptions: generator.VirtualMachineOptions{
@@ -274,6 +282,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		},
 		&stepDef.StepGeneralize{
 			Clients:         b.clients,
+			OsFamily:        osFamily,
 			SkipVirtSysprep: b.config.VirtualMachineSkipVirtSysprep,
 			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
 		},
@@ -283,23 +292,4 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			VmExportTTL:     b.config.VirtualMachineExportTTL,
 		},
 	}
-
-	// Run!
-	runner := commonsteps.NewRunner(steps, b.config.PackerConfig, ui)
-	runner.Run(ctx, state)
-
-	// If there was an error, return that
-	err := appContext.GetPackerError()
-	if err != nil {
-		return nil, err
-	}
-	// a cancelled step halts without an error, and leaves no export to build an artifact from
-	if _, cancelled := state.GetOk(multistep.StateCancelled); cancelled {
-		return nil, errors.New("build was cancelled")
-	}
-	if _, halted := state.GetOk(multistep.StateHalted); halted {
-		return nil, errors.New("build was halted")
-	}
-
-	return appContext.BuildArtifact(builderId), nil
 }

@@ -80,21 +80,18 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 }
 
 func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source packersdk.Artifact) (packersdk.Artifact, bool, bool, error) {
-	ns := source.State(buildercommon.NamespaceArtifactKey).(string)
-	name := source.State(buildercommon.VirtualMachineExportNameArtifactKey).(string)
-	token := source.State(buildercommon.VirtualMachineExportTokenArtifactKey).(string)
 	preference, _ := source.State(buildercommon.PreferenceArtifactKey).(string)
 	diskSize, _ := source.State(buildercommon.DiskSizeArtifactKey).(string)
 
-	export, err := p.clients.Kubevirt.ExportV1().VirtualMachineExports(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	export, token, err := common.GetExport(p.clients, source)
 	if err != nil {
-		return nil, false, false, fmt.Errorf("failed to get Virtual Machine Export: %w", err)
+		return nil, false, false, err
 	}
-	defer common.DeleteOrKeepExport(p.clients, ui, ns, name, p.config.KeepExport)
+	defer common.DeleteOrKeepExport(p.clients, ui, export.Namespace, export.Name, p.config.KeepExport)
 
 	exportServerUrl := common.FindVolumeUrl(export, "")
 	if exportServerUrl == "" {
-		return nil, true, true, fmt.Errorf("failed to get the desired volume URL from Virtual Machine Export %s/%s: %v", ns, name, export.Status)
+		return nil, true, true, fmt.Errorf("failed to get the desired volume URL from Virtual Machine Export %s/%s: %v", export.Namespace, export.Name, export.Status)
 	}
 
 	dataSourceName := cmp.Or(p.config.DataSourceName, export.Name)

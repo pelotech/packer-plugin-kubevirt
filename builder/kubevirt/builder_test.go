@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	stepDef "packer-plugin-kubevirt/builder/common/steps"
+	"packer-plugin-kubevirt/builder/common/vm"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -367,6 +369,39 @@ func TestPrepareCommunicatorKeepsWinRMTimeout(t *testing.T) {
 	}
 	if comm.WinRMTimeout != 30*time.Second {
 		t.Errorf("expected a WinRM timeout of 30s, got: %s", comm.WinRMTimeout)
+	}
+}
+
+func TestStepsReceiveTheGeneralizeSettings(t *testing.T) {
+	for name, test := range map[string]struct {
+		preference      string
+		skipVirtSysprep bool
+		osFamily        vm.OsFamily
+	}{
+		"linux":                      {preference: "ubuntu", osFamily: vm.Linux},
+		"linux without virt-sysprep": {preference: "ubuntu", skipVirtSysprep: true, osFamily: vm.Linux},
+		"windows":                    {preference: "windows.11.virtio", osFamily: vm.Windows},
+	} {
+		t.Run(name, func(t *testing.T) {
+			builder := &Builder{config: Config{
+				VirtualMachinePreference:      test.preference,
+				VirtualMachineSkipVirtSysprep: test.skipVirtSysprep,
+				VirtualMachineExportTimeOut:   time.Minute,
+			}}
+
+			var generalize *stepDef.StepGeneralize
+			for _, step := range builder.steps() {
+				if found, ok := step.(*stepDef.StepGeneralize); ok {
+					generalize = found
+				}
+			}
+			if generalize == nil {
+				t.Fatal("expected a generalize step")
+			}
+			if generalize.OsFamily != test.osFamily || generalize.SkipVirtSysprep != test.skipVirtSysprep || generalize.VmExportTimeOut != time.Minute {
+				t.Errorf("expected OS family %d, skip virt-sysprep %t and a 1m timeout, got: %+v", test.osFamily, test.skipVirtSysprep, generalize)
+			}
+		})
 	}
 }
 
