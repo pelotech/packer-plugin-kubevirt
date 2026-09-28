@@ -33,12 +33,13 @@ func TestGenerateVirtualMachineResources(t *testing.T) {
 
 func TestGenerateStartupScriptSecretForWindows(t *testing.T) {
 	virtualMachine := GenerateVirtualMachine(VirtualMachineOptions{
-		Name:      "base-windows",
-		Namespace: "packer",
-		OsFamily:  vm.Windows,
-		DiskSize:  "15Gi",
-		CPU:       "2",
-		Memory:    "4Gi",
+		Name:             "base-windows",
+		Namespace:        "packer",
+		OsFamily:         vm.Windows,
+		DiskSize:         "15Gi",
+		InstallMediaSize: "8Gi",
+		CPU:              "2",
+		Memory:           "4Gi",
 	})
 	for name, test := range map[string]struct {
 		autounattend string
@@ -115,13 +116,14 @@ func TestLinuxProbeFollowsCloudInitStatus(t *testing.T) {
 
 func generateWindowsVirtualMachine() *kubevirtv1.VirtualMachine {
 	return GenerateVirtualMachine(VirtualMachineOptions{
-		Name:        "base-windows",
-		Namespace:   "packer",
-		OsFamily:    vm.Windows,
-		DiskSize:    "64Gi",
-		CPU:         "2",
-		Memory:      "4Gi",
-		ImageSource: ImageSource{URL: "https://example.com/windows.iso"},
+		Name:             "base-windows",
+		Namespace:        "packer",
+		OsFamily:         vm.Windows,
+		DiskSize:         "64Gi",
+		InstallMediaSize: "8Gi",
+		CPU:              "2",
+		Memory:           "4Gi",
+		ImageSource:      ImageSource{URL: "https://example.com/windows.iso"},
 	})
 }
 
@@ -172,6 +174,10 @@ func TestWindowsInstallMediaIsImportedFromTheSource(t *testing.T) {
 	}
 	if template.Spec.Source == nil || template.Spec.Source.HTTP == nil || template.Spec.Source.HTTP.URL != "https://example.com/windows.iso" {
 		t.Errorf("expected the install media to be imported from the source URL, got: %+v", template.Spec.Source)
+	}
+	// CDI grows the ISO to the size of its volume, and sizes its scratch volume alike
+	if size := template.Spec.PVC.Resources.Requests[corev1.ResourceStorage]; size.String() != "8Gi" {
+		t.Errorf("expected an install media of 8Gi, not the size of the system disk, got: %s", size.String())
 	}
 
 	for _, volume := range virtualMachine.Spec.Template.Spec.Volumes {

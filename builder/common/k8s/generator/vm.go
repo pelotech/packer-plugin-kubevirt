@@ -31,6 +31,7 @@ type VirtualMachineOptions struct {
 	Preference       string
 	OsFamily         vm.OsFamily
 	DiskSize         string
+	InstallMediaSize string
 	CPU              string
 	Memory           string
 	ImageSource      ImageSource
@@ -169,7 +170,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			},
 		}
 	}
-	dataVolumeTemplates := generateDataVolumeTemplates(opts.OsFamily, dataVolumeSource, opts.Name, opts.DiskSize)
+	dataVolumeTemplates := generateDataVolumeTemplates(opts.OsFamily, dataVolumeSource, opts.Name, opts.DiskSize, opts.InstallMediaSize)
 
 	return &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -231,7 +232,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 	}
 }
 
-func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSize string) []kubevirtv1.DataVolumeTemplateSpec {
+func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSize, installMediaSize string) []kubevirtv1.DataVolumeTemplateSpec {
 	if family != vm.Windows {
 		return []kubevirtv1.DataVolumeTemplateSpec{
 			dataVolumeTemplate(BuildDataVolumeName(vmName, SourceDataVolumeSuffix), vmPrimaryDiskSize, dvSource),
@@ -241,7 +242,7 @@ func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVol
 	return []kubevirtv1.DataVolumeTemplateSpec{
 		// Disk empty and used as target by Windows install
 		dataVolumeTemplate(BuildDataVolumeName(vmName, SourceDataVolumeSuffix), vmPrimaryDiskSize, cdiv1beta1.DataVolumeSource{Blank: &cdiv1beta1.DataVolumeBlankImage{}}),
-		dataVolumeTemplate(BuildDataVolumeName(vmName, InstallMediaDataVolumeSuffix), vmPrimaryDiskSize, dvSource),
+		dataVolumeTemplate(BuildDataVolumeName(vmName, InstallMediaDataVolumeSuffix), installMediaSize, dvSource),
 		dataVolumeTemplate(BuildDataVolumeName(vmName, VirtioDataVolumeSuffix), "1Gi", cdiv1beta1.DataVolumeSource{HTTP: &cdiv1beta1.DataVolumeSourceHTTP{URL: virtioDriversURL}}),
 	}
 }

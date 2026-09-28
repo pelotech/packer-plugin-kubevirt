@@ -76,6 +76,10 @@ Defaults to `5m`
 The post-processors download from the export: raise it for several post-processors, big disks or slow uploads
 Defaults to `2h`, the KubeVirt default
 
+- `vm_install_media_size` (string) - Size of the volume the install ISO of `source_url` is imported into, Windows only.
+It has to hold the ISO with some margin: CDI fails the import of a bigger ISO with `A larger PVC is required`
+Defaults to `8Gi`
+
 - `vm_install_timeout` (duration string) - Time out duration for VM to get its OS installed and its guest agent answering (including cloud-init or Windows Setup).
 With a `boot_command`, it also limits the wait for the VM to run and the typing on the VNC console, then the wait for the OS gets the full duration again
 Defaults to `10m`
@@ -360,7 +364,7 @@ The VM gets four drives. Your answer file has to follow them:
 | Drive | Content | Attached as |
 |---|---|---|
 | `C:` | System disk, blank, of `vm_disk_size`. This is the disk that is exported | disk, on the bus of the preference |
-| `D:` | Install ISO of `source_url` | SATA CD-ROM |
+| `D:` | Install ISO of `source_url`, on a volume of `vm_install_media_size` | SATA CD-ROM |
 | `E:` | [virtio drivers](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/) and the guest agent | SATA CD-ROM |
 | `F:` | `autounattend.xml` of `vm_autounattend` | SATA CD-ROM |
 
