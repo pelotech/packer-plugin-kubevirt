@@ -177,6 +177,23 @@ func TestGenerateS3UploaderJobWithoutImageFormat(t *testing.T) {
 	}
 }
 
+func TestGenerateS3UploaderJobDownloadFailsOnHTTPError(t *testing.T) {
+	for name, imageFormat := range map[string]string{
+		"compressed raw image": "",
+		"converted image":      "qcow2",
+	} {
+		t.Run(name, func(t *testing.T) {
+			opts := S3UploaderOptions{Name: "base-ubuntu", Namespace: "packer", ImageFormat: imageFormat}
+
+			podSpec := GenerateS3UploaderJob(newExport(), opts).Spec.Template.Spec
+			// otherwise curl saves the error page of the export server as the image and exits 0
+			if download := strings.Join(podSpec.InitContainers[0].Command, " "); !strings.Contains(download, "curl --fail ") {
+				t.Errorf("expected the download to fail on an HTTP error, got: %s", download)
+			}
+		})
+	}
+}
+
 func TestGenerateS3UploaderJobWithImageFormat(t *testing.T) {
 	serviceAccountName := "s3-uploader"
 	opts := S3UploaderOptions{
