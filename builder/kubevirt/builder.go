@@ -4,7 +4,6 @@ package kubevirt
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer-plugin-sdk/bootcommand"
@@ -20,12 +19,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/api/validate/content"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"log"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"packer-plugin-kubevirt/builder/common/k8s/generator"
 	stepDef "packer-plugin-kubevirt/builder/common/steps"
 	"packer-plugin-kubevirt/builder/common/vm"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -60,8 +59,9 @@ type Config struct {
 }
 
 type Builder struct {
-	config  Config
-	clients *k8s.Clients
+	config      Config
+	clients     *k8s.Clients
+	tolerations []v1.Toleration
 }
 
 func (b *Builder) ConfigSpec() hcldec.ObjectSpec {
@@ -136,6 +136,11 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 		return nil, nil, fmt.Errorf("invalid 'vm_disk_size' value '%s': %s", b.config.VirtualMachineDiskSize, err)
 	}
 
+	b.tolerations, err = decodeTolerations(b.config.KubernetesTolerations)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if errs := b.config.BootConfig.Prepare(&interpolate.Context{}); len(errs) > 0 {
 		return nil, nil, &packer.MultiError{Errors: errs}
 	}
@@ -199,18 +204,46 @@ func connectStep(comm *communicator.Config) *communicator.StepConnect {
 	}
 }
 
-func decodeTolerations(rawTolerations []map[string]string) []v1.Toleration {
+// decodeTolerations reads each field by name, as the template gives every value, even tolerationSeconds, as a string
+func decodeTolerations(rawTolerations []map[string]string) ([]v1.Toleration, error) {
 	var tolerations []v1.Toleration
-	for _, rawToleration := range rawTolerations {
+	for index, rawToleration := range rawTolerations {
+		setting := fmt.Sprintf("kubernetes_tolerations[%d]", index)
 		var toleration v1.Toleration
-		serializedToleration, _ := json.Marshal(rawToleration)
-		err := json.Unmarshal(serializedToleration, &toleration)
-		if err != nil {
-			log.Printf("Error deserializing tolerations: %s", err)
+		for field, value := range rawToleration {
+			switch field {
+			case "key":
+				toleration.Key = value
+			case "operator":
+				toleration.Operator = v1.TolerationOperator(value)
+			case "value":
+				toleration.Value = value
+			case "effect":
+				toleration.Effect = v1.TaintEffect(value)
+			case "tolerationSeconds":
+				seconds, err := strconv.ParseInt(value, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("invalid '%s.tolerationSeconds' value '%s': must be a whole number of seconds", setting, value)
+				}
+				toleration.TolerationSeconds = &seconds
+			default:
+				return nil, fmt.Errorf("invalid '%s' field '%s': must be key, operator, value, effect or tolerationSeconds", setting, field)
+			}
+		}
+
+		switch toleration.Operator {
+		case "", v1.TolerationOpEqual, v1.TolerationOpExists, v1.TolerationOpLt, v1.TolerationOpGt:
+		default:
+			return nil, fmt.Errorf("invalid '%s.operator' value '%s': must be Equal, Exists, Lt or Gt", setting, toleration.Operator)
+		}
+		switch toleration.Effect {
+		case "", v1.TaintEffectNoSchedule, v1.TaintEffectPreferNoSchedule, v1.TaintEffectNoExecute:
+		default:
+			return nil, fmt.Errorf("invalid '%s.effect' value '%s': must be NoSchedule, PreferNoSchedule or NoExecute", setting, toleration.Effect)
 		}
 		tolerations = append(tolerations, toleration)
 	}
-	return tolerations
+	return tolerations, nil
 }
 
 func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (packer.Artifact, error) {
@@ -240,7 +273,7 @@ func (b *Builder) steps() []multistep.Step {
 				Name:         b.config.VirtualMachineName,
 				Namespace:    b.config.KubernetesNamespace,
 				NodeSelector: b.config.KubernetesNodeSelector,
-				Tolerations:  decodeTolerations(b.config.KubernetesTolerations),
+				Tolerations:  b.tolerations,
 				Preference:   b.config.VirtualMachinePreference,
 				OsFamily:     osFamily,
 				DiskSize:     b.config.VirtualMachineDiskSize,
