@@ -77,17 +77,18 @@ func TestPrepareChecksRequiredSettings(t *testing.T) {
 		value    string
 		expected string
 	}{
-		"example settings":             {},
-		"longest vm_name":              {"vm_name", strings.Repeat("a", 52), ""},
-		"missing kubernetes_namespace": {"kubernetes_namespace", "", "'kubernetes_namespace' is required"},
-		"invalid kubernetes_namespace": {"kubernetes_namespace", "packer_linux", "invalid 'kubernetes_namespace' value 'packer_linux'"},
-		"missing source_url":           {"source_url", "", "'source_url' is required"},
-		"missing vm_preference":        {"vm_preference", "", "'vm_preference' is required"},
-		"missing vm_disk_size":         {"vm_disk_size", "", "'vm_disk_size' is required"},
-		"invalid vm_disk_size":         {"vm_disk_size", "plenty", "invalid 'vm_disk_size' value 'plenty'"},
-		"missing vm_name":              {"vm_name", "", "'vm_name' is required"},
-		"too long vm_name":             {"vm_name", strings.Repeat("a", 53), "must be no more than 52 characters"},
-		"vm_name with a dot":           {"vm_name", "base.ubuntu", "invalid 'vm_name' value 'base.ubuntu'"},
+		"example settings":              {},
+		"longest vm_name":               {"vm_name", strings.Repeat("a", 52), ""},
+		"missing kubernetes_namespace":  {"kubernetes_namespace", "", "'kubernetes_namespace' is required"},
+		"invalid kubernetes_namespace":  {"kubernetes_namespace", "packer_linux", "invalid 'kubernetes_namespace' value 'packer_linux'"},
+		"missing source_url":            {"source_url", "", "'source_url' is required"},
+		"missing vm_preference":         {"vm_preference", "", "'vm_preference' is required"},
+		"missing vm_disk_size":          {"vm_disk_size", "", "'vm_disk_size' is required"},
+		"invalid vm_disk_size":          {"vm_disk_size", "plenty", "invalid 'vm_disk_size' value 'plenty'"},
+		"invalid vm_install_media_size": {"vm_install_media_size", "plenty", "invalid 'vm_install_media_size' value 'plenty'"},
+		"missing vm_name":               {"vm_name", "", "'vm_name' is required"},
+		"too long vm_name":              {"vm_name", strings.Repeat("a", 53), "must be no more than 52 characters"},
+		"vm_name with a dot":            {"vm_name", "base.ubuntu", "invalid 'vm_name' value 'base.ubuntu'"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -160,6 +161,48 @@ func TestPrepareChecksTolerations(t *testing.T) {
 			example := v1.Toleration{Key: "pelo.tech/kvm", Operator: v1.TolerationOpEqual, Value: "true", Effect: v1.TaintEffectNoSchedule}
 			if expected := []v1.Toleration{example, example}; !reflect.DeepEqual(deploy.VmOptions.Tolerations, expected) {
 				t.Errorf("expected the tolerations %+v, got: %+v", expected, deploy.VmOptions.Tolerations)
+			}
+		})
+	}
+}
+
+func TestDeployStepReceivesTheInstallMediaSize(t *testing.T) {
+	useTestCluster(t)
+
+	for name, test := range map[string]struct {
+		installMediaSize string
+		expected         string
+	}{
+		"default": {installMediaSize: "", expected: "8Gi"},
+		"set":     {installMediaSize: "6Gi", expected: "6Gi"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			settings := map[string]interface{}{
+				"kubernetes_namespace": "packer-windows",
+				"source_url":           "https://example.com/windows-11.iso",
+				"vm_disk_size":         "64Gi",
+				"vm_name":              "base-windows-11",
+				"vm_preference":        "windows.11.virtio",
+			}
+			if test.installMediaSize != "" {
+				settings["vm_install_media_size"] = test.installMediaSize
+			}
+			builder := new(Builder)
+			if _, _, err := builder.Prepare(settings); err != nil {
+				t.Fatalf("expected the settings to be valid, got: %v", err)
+			}
+
+			var deploy *stepDef.StepDeployVM
+			for _, step := range builder.steps() {
+				if found, ok := step.(*stepDef.StepDeployVM); ok {
+					deploy = found
+				}
+			}
+			if deploy == nil {
+				t.Fatal("expected a deploy step")
+			}
+			if deploy.VmOptions.InstallMediaSize != test.expected || deploy.VmOptions.DiskSize != "64Gi" {
+				t.Errorf("expected an install media of %s and a disk of 64Gi, got: %s and %s", test.expected, deploy.VmOptions.InstallMediaSize, deploy.VmOptions.DiskSize)
 			}
 		})
 	}

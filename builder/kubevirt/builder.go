@@ -48,6 +48,7 @@ type Config struct {
 	VirtualMachineName             string              `mapstructure:"vm_name"`
 	VirtualMachinePreference       string              `mapstructure:"vm_preference"`
 	VirtualMachineDiskSize         string              `mapstructure:"vm_disk_size"`
+	VirtualMachineInstallMediaSize string              `mapstructure:"vm_install_media_size" required:"false"`
 	VirtualMachineCPU              string              `mapstructure:"vm_cpu" required:"false"`
 	VirtualMachineMemory           string              `mapstructure:"vm_memory" required:"false"`
 	VirtualMachineInstallTimeOut   time.Duration       `mapstructure:"vm_install_timeout" required:"false"`
@@ -134,6 +135,13 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 
 	if _, err = resource.ParseQuantity(b.config.VirtualMachineDiskSize); err != nil {
 		return nil, nil, fmt.Errorf("invalid 'vm_disk_size' value '%s': %s", b.config.VirtualMachineDiskSize, err)
+	}
+
+	if b.config.VirtualMachineInstallMediaSize == "" {
+		b.config.VirtualMachineInstallMediaSize = "8Gi"
+	}
+	if _, err = resource.ParseQuantity(b.config.VirtualMachineInstallMediaSize); err != nil {
+		return nil, nil, fmt.Errorf("invalid 'vm_install_media_size' value '%s': %s", b.config.VirtualMachineInstallMediaSize, err)
 	}
 
 	b.tolerations, err = decodeTolerations(b.config.KubernetesTolerations)
@@ -270,15 +278,16 @@ func (b *Builder) steps() []multistep.Step {
 		&stepDef.StepDeployVM{
 			Clients: b.clients,
 			VmOptions: generator.VirtualMachineOptions{
-				Name:         b.config.VirtualMachineName,
-				Namespace:    b.config.KubernetesNamespace,
-				NodeSelector: b.config.KubernetesNodeSelector,
-				Tolerations:  b.tolerations,
-				Preference:   b.config.VirtualMachinePreference,
-				OsFamily:     osFamily,
-				DiskSize:     b.config.VirtualMachineDiskSize,
-				CPU:          b.config.VirtualMachineCPU,
-				Memory:       b.config.VirtualMachineMemory,
+				Name:             b.config.VirtualMachineName,
+				Namespace:        b.config.KubernetesNamespace,
+				NodeSelector:     b.config.KubernetesNodeSelector,
+				Tolerations:      b.tolerations,
+				Preference:       b.config.VirtualMachinePreference,
+				OsFamily:         osFamily,
+				DiskSize:         b.config.VirtualMachineDiskSize,
+				InstallMediaSize: b.config.VirtualMachineInstallMediaSize,
+				CPU:              b.config.VirtualMachineCPU,
+				Memory:           b.config.VirtualMachineMemory,
 				ImageSource: generator.ImageSource{
 					URL:                b.config.SourceUrl,
 					AWSAccessKeyId:     b.config.SourceAWSAccessKeyId,
