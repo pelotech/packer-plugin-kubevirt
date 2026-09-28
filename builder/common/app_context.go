@@ -18,8 +18,10 @@ const (
 	VirtualMachineOsFamily    StateBagEntry = "vmosfamily"
 	VirtualMachineExport      StateBagEntry = "vmexport"
 	VirtualMachineExportToken StateBagEntry = "vmexporttoken"
-	Preference                StateBagEntry = "preference"
-	DiskSize                  StateBagEntry = "disksize"
+	// the export owns the stopped Virtual Machine, its deletion removes the disk
+	VirtualMachineOwnedByExport StateBagEntry = "vmownedbyexport"
+	Preference                  StateBagEntry = "preference"
+	DiskSize                    StateBagEntry = "disksize"
 
 	VirtualMachineHost     = "127.0.0.1"
 	VirtualMachineUsername = "packer"
@@ -76,6 +78,18 @@ func (s *AppContext) GetVirtualMachineExport() *exportv1.VirtualMachineExport {
 
 func (s *AppContext) GetVirtualMachineExportToken() string {
 	return s.get(VirtualMachineExportToken).(string)
+}
+
+func (s *AppContext) IsVirtualMachineOwnedByExport() bool {
+	owned, _ := s.get(VirtualMachineOwnedByExport).(bool)
+	return owned
+}
+
+// BuildFailed tells whether a step halted the build or it was cancelled
+func (s *AppContext) BuildFailed() bool {
+	_, halted := s.State.GetOk(multistep.StateHalted)
+	_, cancelled := s.State.GetOk(multistep.StateCancelled)
+	return halted || cancelled
 }
 
 func (s *AppContext) GetPreference() string {

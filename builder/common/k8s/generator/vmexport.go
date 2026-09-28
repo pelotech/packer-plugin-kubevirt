@@ -3,6 +3,7 @@ package generator
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1"
 	"packer-plugin-kubevirt/builder/common/k8s"
@@ -46,5 +47,17 @@ func GenerateVirtualMachineExport(vm *kubevirtv1.VirtualMachine) *exportv1.Virtu
 			TokenSecretRef: &secretName,
 			Source:         exportSource,
 		},
+	}
+}
+
+// GenerateExportOwnerReference makes an export the owner of the stopped Virtual Machine, without blocking its deletion
+func GenerateExportOwnerReference(export *exportv1.VirtualMachineExport) metav1.OwnerReference {
+	return metav1.OwnerReference{
+		APIVersion:         exportv1.SchemeGroupVersion.String(),
+		Kind:               k8s.VirtualMachineExportKind,
+		Name:               export.Name,
+		UID:                export.UID,
+		Controller:         ptr.To(false),
+		BlockOwnerDeletion: ptr.To(false),
 	}
 }

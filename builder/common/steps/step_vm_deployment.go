@@ -72,6 +72,10 @@ func (s *StepDeployVM) Cleanup(state multistep.StateBag) {
 	if vm == nil {
 		return
 	}
+	if appContext.IsVirtualMachineOwnedByExport() && !appContext.BuildFailed() {
+		appContext.GetPackerUi().Message(fmt.Sprintf("Virtual Machine %s/%s is kept, it is deleted with its export", vm.Namespace, vm.Name))
+		return
+	}
 
 	propagationPolicy := metav1.DeletePropagationForeground
 	_ = s.Clients.Kubevirt.KubevirtV1().VirtualMachines(vm.Namespace).Delete(context.TODO(), vm.Name, metav1.DeleteOptions{
