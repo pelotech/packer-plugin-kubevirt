@@ -25,7 +25,7 @@ integration {
   }
   component {
     type = "builder"
-    name = "KubeVirt ISO"
+    name = "KubeVirt"
     slug = "builder"
   }
   component {

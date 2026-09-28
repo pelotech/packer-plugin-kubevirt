@@ -34,5 +34,5 @@ runs:
         garage bucket create "${BUCKET}"
         garage bucket allow --read --write "${BUCKET}" --key packer
 
-        echo "PKR_VAR_destination_aws_access_key_id=${access_key_id}" >> "${GITHUB_ENV}"
-        echo "PKR_VAR_destination_aws_secret_access_key=${secret_access_key}" >> "${GITHUB_ENV}"
+        echo "PKR_VAR_destination_s3_access_key_id=${access_key_id}" >> "${GITHUB_ENV}"
+        echo "PKR_VAR_destination_s3_secret_access_key=${secret_access_key}" >> "${GITHUB_ENV}"

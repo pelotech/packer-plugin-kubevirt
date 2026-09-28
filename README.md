@@ -8,7 +8,7 @@ Build virtual machine images on Kubernetes with [KubeVirt](https://kubevirt.io),
 flowchart LR
     source[("Source<br/>ISO or cloud image<br/>over HTTP or from S3")]
 
-    subgraph builder["Builder kubevirt-iso"]
+    subgraph builder["Builder kubevirt"]
         direction TB
         import["CDI imports the source"]
         boot["The Virtual Machine boots<br/>boot command over VNC<br/>for a Windows ISO"]
@@ -41,7 +41,7 @@ Everything runs in the cluster, as Virtual Machines and jobs. Nothing else than 
 
 | Component | Type | What it does |
 |---|---|---|
-| [kubevirt-iso](docs/builders/builder.mdx) | builder | Creates and provisions the Virtual Machine |
+| [kubevirt](docs/builders/builder.mdx) | builder | Creates and provisions the Virtual Machine |
 | [kubevirt-s3](docs/post-processors/post-processor.mdx) | post-processor | Uploads the disk to S3 or S3-compatible storage, as it is or converted to `qcow2`, `vmdk`, `vhdx` or `vdi` |
 | [kubevirt-oci](docs/post-processors/oci.mdx) | post-processor | Pushes the disk to a container registry as a containerDisk image, in `qcow2` or `raw` |
 | [kubevirt-datasource](docs/post-processors/datasource.mdx) | post-processor | Imports the disk into a volume of the cluster and points a DataSource to it |
@@ -53,7 +53,7 @@ Linux builds are covered by the integration test. Windows 11 has its own, starte
 ## Requirements
 
 - A Kubernetes cluster with [KubeVirt](https://kubevirt.io/user-guide/cluster_admin/installation/) 1.9 or later and [CDI](https://github.com/kubevirt/containerized-data-importer), and nodes with KVM
-- The [preferences](https://github.com/kubevirt/common-instancetypes) you refer to with `kubevirt_os_preference`
+- The [preferences](https://github.com/kubevirt/common-instancetypes) you refer to with `vm_preference`
 - A kubeconfig for that cluster. The plugin uses your current context, or the service account of its pod when Packer runs in the cluster
 - Packer. The integration test runs with the version of [mise.toml](mise.toml)
 
@@ -84,16 +84,16 @@ COPY --from=ghcr.io/pelotech/packer-plugin-kubevirt:<version> / /root/.config/pa
 ## Quick start
 
 ```hcl
-source "kubevirt-iso" "ubuntu" {
-  vm_name                = "base-ubuntu-2604"
-  kubernetes_namespace   = "packer"
-  source_url             = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
-  kubevirt_os_preference = "ubuntu"
-  vm_disk_space          = "10Gi"
+source "kubevirt" "ubuntu" {
+  kubernetes_namespace = "packer"
+  source_url           = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
+  vm_disk_size         = "10Gi"
+  vm_name              = "base-ubuntu-2604"
+  vm_preference        = "ubuntu"
 }
 
 build {
-  sources = ["source.kubevirt-iso.ubuntu"]
+  sources = ["source.kubevirt.ubuntu"]
 
   provisioner "shell" {
     inline = ["sudo apt-get install --yes nginx"]
@@ -112,17 +112,17 @@ This keeps the image in the cluster. To export it somewhere else as well, chain 
 
 ```hcl
   post-processor "kubevirt-s3" {
-    s3_bucket             = "virtual-machine-images"
-    aws_region            = "us-east-1"
-    aws_access_key_id     = var.aws_access_key_id
-    aws_secret_access_key = var.aws_secret_access_key
-    keep_export           = true
+    keep_export          = true
+    s3_access_key_id     = var.s3_access_key_id
+    s3_bucket            = "virtual-machine-images"
+    s3_region            = "us-east-1"
+    s3_secret_access_key = var.s3_secret_access_key
   }
 
   post-processor "kubevirt-oci" {
     image             = "ghcr.io/pelotech/base-ubuntu:26.04"
-    registry_username = var.registry_username
     registry_password = var.registry_password
+    registry_username = var.registry_username
   }
 ```
 

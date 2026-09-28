@@ -33,28 +33,28 @@ const (
 )
 
 type Config struct {
-	common.PackerConfig             `mapstructure:",squash"`
-	Comm                            communicator.Config `mapstructure:",squash"`
-	bootcommand.BootConfig          `mapstructure:",squash"`
-	BootKeyInterval                 time.Duration `mapstructure:"boot_key_interval" required:"false"`
-	shutdowncommand.ShutdownConfig  `mapstructure:",squash"`
-	KubernetesNamespace             string              `mapstructure:"kubernetes_namespace"`
-	KubernetesNodeSelectors         map[string]string   `mapstructure:"kubernetes_node_selectors"`
-	KubernetesTolerations           []map[string]string `mapstructure:"kubernetes_tolerations"`
-	KubevirtOsPreference            string              `mapstructure:"kubevirt_os_preference"`
-	SourceUrl                       string              `mapstructure:"source_url"`
-	SourceAWSAccessKeyId            string              `mapstructure:"source_aws_access_key_id" required:"false"`
-	SourceAWSSecretAccessKey        string              `mapstructure:"source_aws_secret_access_key" required:"false"`
-	VirtualMachineName              string              `mapstructure:"vm_name"`
-	VirtualMachineDiskSpace         string              `mapstructure:"vm_disk_space"`
-	VirtualMachineCPU               string              `mapstructure:"vm_cpu" required:"false"`
-	VirtualMachineMemory            string              `mapstructure:"vm_memory" required:"false"`
-	VirtualMachineDeploymentTimeOut time.Duration       `mapstructure:"vm_deployment_timeout" required:"false"`
-	VirtualMachineExportTimeOut     time.Duration       `mapstructure:"vm_export_timeout" required:"false"`
-	VirtualMachineExportTTL         time.Duration       `mapstructure:"vm_export_ttl" required:"false"`
-	VirtualMachineSkipVirtSysprep   bool                `mapstructure:"vm_skip_virt_sysprep" required:"false"`
-	VirtualMachineLinuxCloudInit    string              `mapstructure:"vm_linux_cloud_init" required:"false"`
-	VirtualMachineWindowsSysprep    string              `mapstructure:"vm_windows_sysprep" required:"false"`
+	common.PackerConfig            `mapstructure:",squash"`
+	Comm                           communicator.Config `mapstructure:",squash"`
+	bootcommand.BootConfig         `mapstructure:",squash"`
+	BootKeyInterval                time.Duration `mapstructure:"boot_key_interval" required:"false"`
+	shutdowncommand.ShutdownConfig `mapstructure:",squash"`
+	KubernetesNamespace            string              `mapstructure:"kubernetes_namespace"`
+	KubernetesNodeSelector         map[string]string   `mapstructure:"kubernetes_node_selector"`
+	KubernetesTolerations          []map[string]string `mapstructure:"kubernetes_tolerations"`
+	VirtualMachinePreference       string              `mapstructure:"vm_preference"`
+	SourceUrl                      string              `mapstructure:"source_url"`
+	SourceAWSAccessKeyId           string              `mapstructure:"source_aws_access_key_id" required:"false"`
+	SourceAWSSecretAccessKey       string              `mapstructure:"source_aws_secret_access_key" required:"false"`
+	VirtualMachineName             string              `mapstructure:"vm_name"`
+	VirtualMachineDiskSize         string              `mapstructure:"vm_disk_size"`
+	VirtualMachineCPU              string              `mapstructure:"vm_cpu" required:"false"`
+	VirtualMachineMemory           string              `mapstructure:"vm_memory" required:"false"`
+	VirtualMachineInstallTimeOut   time.Duration       `mapstructure:"vm_install_timeout" required:"false"`
+	VirtualMachineExportTimeOut    time.Duration       `mapstructure:"vm_export_timeout" required:"false"`
+	VirtualMachineExportTTL        time.Duration       `mapstructure:"vm_export_ttl" required:"false"`
+	VirtualMachineSkipVirtSysprep  bool                `mapstructure:"vm_skip_virt_sysprep" required:"false"`
+	VirtualMachineCloudInit        string              `mapstructure:"vm_cloud_init" required:"false"`
+	VirtualMachineAutounattend     string              `mapstructure:"vm_autounattend" required:"false"`
 }
 
 type Builder struct {
@@ -77,8 +77,8 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 
 	// TODO: Align logger log level on user bool input 'b.config.PackerDebug'	INFO/DEBUG
 
-	if b.config.VirtualMachineDeploymentTimeOut == 0 {
-		b.config.VirtualMachineDeploymentTimeOut = 10 * time.Minute
+	if b.config.VirtualMachineInstallTimeOut == 0 {
+		b.config.VirtualMachineInstallTimeOut = 10 * time.Minute
 	}
 
 	if b.config.VirtualMachineExportTimeOut == 0 {
@@ -186,10 +186,10 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 	appContext.Put(buildercommon.PackerHook, hook)
 	appContext.Put(buildercommon.PackerUi, ui)
 
-	osFamily := vm.GetOSFamily(b.config.KubevirtOsPreference)
+	osFamily := vm.GetOSFamily(b.config.VirtualMachinePreference)
 	appContext.Put(buildercommon.VirtualMachineOsFamily, &osFamily)
-	appContext.Put(buildercommon.Preference, b.config.KubevirtOsPreference)
-	appContext.Put(buildercommon.DiskSize, b.config.VirtualMachineDiskSpace)
+	appContext.Put(buildercommon.Preference, b.config.VirtualMachinePreference)
+	appContext.Put(buildercommon.DiskSize, b.config.VirtualMachineDiskSize)
 
 	steps := []multistep.Step{
 		&stepDef.StepDeployVM{
@@ -197,11 +197,11 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			VmOptions: generator.VirtualMachineOptions{
 				Name:           b.config.VirtualMachineName,
 				Namespace:      b.config.KubernetesNamespace,
-				NodeSelectors:  b.config.KubernetesNodeSelectors,
+				NodeSelectors:  b.config.KubernetesNodeSelector,
 				Tolerations:    decodeTolerations(b.config.KubernetesTolerations),
-				OsDistribution: b.config.KubevirtOsPreference,
+				OsDistribution: b.config.VirtualMachinePreference,
 				OsFamily:       osFamily,
-				DiskSpace:      b.config.VirtualMachineDiskSpace,
+				DiskSpace:      b.config.VirtualMachineDiskSize,
 				CPU:            b.config.VirtualMachineCPU,
 				Memory:         b.config.VirtualMachineMemory,
 				ImageSource: generator.ImageSource{
@@ -210,8 +210,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 					AWSSecretAccessKey: b.config.SourceAWSSecretAccessKey,
 				},
 				UserProvisioning: generator.UserProvisioning{
-					CloudInit: b.config.VirtualMachineLinuxCloudInit,
-					Sysprep:   b.config.VirtualMachineWindowsSysprep,
+					CloudInit: b.config.VirtualMachineCloudInit,
+					Sysprep:   b.config.VirtualMachineAutounattend,
 				},
 			},
 		},
@@ -221,11 +221,11 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			BootWait:         b.config.BootWait,
 			KeyInterval:      b.config.BootKeyInterval,
 			KeyGroupInterval: b.config.BootGroupInterval,
-			Timeout:          b.config.VirtualMachineDeploymentTimeOut,
+			Timeout:          b.config.VirtualMachineInstallTimeOut,
 		},
 		&stepDef.StepWaitForVM{
 			Clients:             b.clients,
-			VmDeploymentTimeOut: b.config.VirtualMachineDeploymentTimeOut,
+			VmDeploymentTimeOut: b.config.VirtualMachineInstallTimeOut,
 		},
 		&stepDef.StepPortForwardVM{
 			Clients: b.clients,

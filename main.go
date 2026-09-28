@@ -14,7 +14,7 @@ import (
 
 func main() {
 	pps := plugin.NewSet()
-	pps.RegisterBuilder("iso", new(iso.Builder))
+	pps.RegisterBuilder(plugin.DEFAULT_NAME, new(iso.Builder))
 	pps.RegisterPostProcessor("s3", new(s3.PostProcessor))
 	pps.RegisterPostProcessor("oci", new(oci.PostProcessor))
 	pps.RegisterPostProcessor("datasource", new(datasource.PostProcessor))

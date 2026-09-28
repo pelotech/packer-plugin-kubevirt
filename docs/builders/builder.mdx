@@ -1,14 +1,14 @@
 ---
 description: >
-  The kubevirt-iso builder creates a KubeVirt Virtual Machine from an ISO or a cloud image,
+  The kubevirt builder creates a KubeVirt Virtual Machine from an ISO or a cloud image,
   provisions it and exports its disk.
-page_title: KubeVirt ISO - Builders
-nav_title: ISO
+page_title: KubeVirt - Builders
+nav_title: KubeVirt
 ---
 
-# KubeVirt ISO Builder
+# KubeVirt Builder
 
-Type: `kubevirt-iso`
+Type: `kubevirt`
 
 <!--
   Include a short description about the builder. This is a good place
@@ -16,7 +16,7 @@ Type: `kubevirt-iso`
   builder environment. See https://www.packer.io/docs/builders/null
 -->
 
-The ISO builder is mostly used to create base VM images, an ISO or a cloud image of your choice will be the starting point.
+The builder is mostly used to create base VM images, an ISO or a cloud image of your choice will be the starting point.
 
 The builder runs against the Kubernetes cluster of your current kube context, with KubeVirt 1.9 or later and CDI installed.
 Once provisioned, the Virtual Machine is stopped, Linux disks are generalized with `virt-sysprep`
@@ -28,18 +28,18 @@ Windows is generalized by your shutdown command, see [Windows](#windows). `vm_sk
 
 **Required fields**
 
-- `vm_name` (string) - Name of the Virtual Machine the build creates in the cluster. Its disks, secrets, jobs and Virtual Machine Export are named after it.
-The post-processors also name the S3 object and the DataSource after it, unless `s3_object_name` or `datasource_name` is set
-
 - `kubernetes_namespace` (string) - Kubernetes namespace used to provision and export virtual machines
 
 - `source_url` (string) - URL of the ISO or cloud image used as the starting point. It is read from inside the cluster, over HTTP or HTTPS.
 With `source_aws_access_key_id` and `source_aws_secret_access_key` it is read from S3, and has to be `https://s3.<region>.amazonaws.com/<bucket>/<key>`
 
-- `kubevirt_os_preference` (string) - KubeVirt VM preference to apply to the VM. List of preferences available [here](https://github.com/kubevirt/common-instancetypes/tree/main/preferences).
-A preference containing `windows` selects the Windows installation flow, any other value selects the Linux one
+- `vm_disk_size` (string) - KubeVirt VM disk size required to install the OS and its packages (e.g. `10Gi`)
 
-- `vm_disk_space` (string) - KubeVirt VM disk space required to install the OS and its packages (e.g. `10Gi`)
+- `vm_name` (string) - Name of the Virtual Machine the build creates in the cluster. Its disks, secrets, jobs and Virtual Machine Export are named after it.
+The post-processors also name the S3 object and the DataSource after it, unless `s3_object_name` or `datasource_name` is set
+
+- `vm_preference` (string) - KubeVirt VM preference to apply to the VM. List of preferences available [here](https://github.com/kubevirt/common-instancetypes/tree/main/preferences).
+A preference containing `windows` selects the Windows installation flow, any other value selects the Linux one
 
 <!--
   Optional Configuration Fields
@@ -51,42 +51,42 @@ A preference containing `windows` selects the Windows installation flow, any oth
 
 **Optional fields**
 
-- `kubernetes_node_selectors` (map[string]string) - Kubernetes node selectors targeting the node where resources should be created
+- `kubernetes_node_selector` (map[string]string) - Kubernetes node selector targeting the node where resources should be created
 Defaults to no node selector
 
 - `kubernetes_tolerations` ([]map[string]string) - Kubernetes tolerations resources should support to get eligible to the desired node
 Defaults to no toleration
-
-- `vm_cpu` (string) - CPUs requested by the VM
-Defaults to `4`
-
-- `vm_memory` (string) - Memory requested by the VM
-Defaults to `8Gi`
-
-- `vm_linux_cloud_init` (string) - Cloud-init file content to inject into the VM at first boot.
-Defaults to a default cloud-init file available in the source code
-
-- `vm_windows_sysprep` (string) - Sysprep answer file content (`autounattend.xml`) used to install Windows.
-Defaults to a default answer file available in the source code
-
-- `vm_deployment_timeout` (duration string) - Time out duration for VM to get its OS installed (including cloud-init or sysprep)
-Defaults to `10m`
-
-- `vm_export_timeout` (duration string) - Time out duration for each stage of the export: VM shutdown, `virt-sysprep` job (Linux only) and export server to be up and ready for download
-Defaults to `5m`
-
-- `vm_export_ttl` (duration string) - Lifetime of the Virtual Machine Export, from its creation. When it expires, KubeVirt deletes the export, and with it the stopped VM and its disk.
-The post-processors download from the export: raise it for several post-processors, big disks or slow uploads
-Defaults to `2h`, the KubeVirt default
-
-- `vm_skip_virt_sysprep` (bool) - Skip the `virt-sysprep` job on Linux disks, the VM is still stopped before the export. It changes nothing for Windows, generalized by your shutdown command
-Defaults to `false`
 
 - `source_aws_access_key_id` (string) - AWS Access Key ID for S3 bucket containing VM images. Keys of an IAM user: temporary credentials are not supported, use a presigned URL as `source_url` instead
 Sensitive field - Defaults to empty string (will skip adding credentials)
 
 - `source_aws_secret_access_key` (string) - AWS Secret Access Key for S3 bucket containing VM images
 Sensitive field - Defaults to empty string (will skip adding credentials)
+
+- `vm_autounattend` (string) - Answer file content (`autounattend.xml`) used by Windows Setup to install Windows.
+Defaults to a default answer file available in the source code
+
+- `vm_cloud_init` (string) - Cloud-init file content to inject into the Linux VM at first boot.
+Defaults to a default cloud-init file available in the source code
+
+- `vm_cpu` (string) - CPUs requested by the VM
+Defaults to `4`
+
+- `vm_export_timeout` (duration string) - Time out duration for each stage of the export: VM stop when there is no `shutdown_command` (`shutdown_timeout` applies otherwise), `virt-sysprep` job (Linux only) and export server to be up and ready for download
+Defaults to `5m`
+
+- `vm_export_ttl` (duration string) - Lifetime of the Virtual Machine Export, from its creation. When it expires, KubeVirt deletes the export, and with it the stopped VM and its disk.
+The post-processors download from the export: raise it for several post-processors, big disks or slow uploads
+Defaults to `2h`, the KubeVirt default
+
+- `vm_install_timeout` (duration string) - Time out duration for VM to get its OS installed and its guest agent answering (including cloud-init or Windows Setup)
+Defaults to `10m`
+
+- `vm_memory` (string) - Memory requested by the VM
+Defaults to `8Gi`
+
+- `vm_skip_virt_sysprep` (bool) - Skip the `virt-sysprep` job on Linux disks, the VM is still stopped before the export. It changes nothing for Windows, generalized by your shutdown command
+Defaults to `false`
 
 **Boot command fields**
 
@@ -96,14 +96,14 @@ They follow the [boot command](https://developer.hashicorp.com/packer/docs/templ
 - `boot_command` ([]string) - Keys to type
 Defaults to no key, the console is left alone
 
-- `boot_wait` (duration string) - Time to wait after the VM runs, before the first key
-Defaults to `10s`
-
 - `boot_key_interval` (duration string) - Time to wait between two keys
 Defaults to `100ms`
 
 - `boot_keygroup_interval` (duration string) - Time to wait between two items of `boot_command`
 Defaults to no wait
+
+- `boot_wait` (duration string) - Time to wait after the VM runs, before the first key
+Defaults to `10s`
 
 **Shutdown fields**
 
@@ -125,11 +125,11 @@ The other settings of the Packer [SSH](https://developer.hashicorp.com/packer/do
 - `communicator` (string) - Packer communicator type
 Accepted values: `ssh`, `winrm` - Defaults to `ssh`
 
-- `ssh_username` (string) - User name to connect to the VM with SSH
-Defaults to `packer`, the user of the default cloud-init file, when `ssh_username` and `ssh_password` are both unset
-
 - `ssh_password` (string) - Password to connect to the VM with SSH
 Sensitive field - Defaults to `packer` when `ssh_username` and `ssh_password` are both unset
+
+- `ssh_port` (int) - Local port forwarded to the VM SSH port
+Accepted value: `>=1024` - Defaults to a free local port
 
 - `ssh_private_key_file` (string) - Path to the private key to connect to the VM with SSH, your cloud-init file has to authorize its public key
 Defaults to no key
@@ -137,11 +137,11 @@ Defaults to no key
 - `ssh_timeout` (duration string) - Time to wait for SSH to become available
 Defaults to `5m`
 
-- `ssh_port` (int) - Local port forwarded to the VM SSH port
-Accepted value: `>=1024` - Defaults to a free local port
+- `ssh_username` (string) - User name to connect to the VM with SSH
+Defaults to `packer`, the user of the default cloud-init file, when `ssh_username` and `ssh_password` are both unset
 
-- `winrm_username` (string) - User name to connect to the VM with WinRM
-Defaults to `packer`, the user of the default answer file, when `winrm_username` and `winrm_password` are both unset
+- `winrm_insecure` (bool) - Skip server certificate chain and host name check
+Defaults to `false`
 
 - `winrm_password` (string) - Password to connect to the VM with WinRM
 Sensitive field - Defaults to `packer` when `winrm_username` and `winrm_password` are both unset
@@ -149,14 +149,14 @@ Sensitive field - Defaults to `packer` when `winrm_username` and `winrm_password
 - `winrm_port` (int) - Local port forwarded to the VM WinRM port
 Accepted value: `>=1024` - Defaults to a free local port
 
+- `winrm_timeout` (duration string) - WinRM connection timeout
+Defaults to `30s`
+
 - `winrm_use_ssl` (bool) - Use HTTPS for WinRM
 Defaults to `false`
 
-- `winrm_insecure` (bool) - Skip server certificate chain and host name check
-Defaults to `false`
-
-- `winrm_timeout` (duration string) - WinRM connection timeout
-Defaults to `30s`
+- `winrm_username` (string) - User name to connect to the VM with WinRM
+Defaults to `packer`, the user of the default answer file, when `winrm_username` and `winrm_password` are both unset
 
 <!--
   A basic example on the usage of the builder. Multiple examples
@@ -167,10 +167,9 @@ Defaults to `30s`
 
 #### Linux
 ```hcl
-source "kubevirt-iso" "ubuntu" {
-  vm_name                     = "ubuntu"
+source "kubevirt" "ubuntu" {
   kubernetes_namespace        = "default"
-  kubernetes_node_selectors   = {
+  kubernetes_node_selector    = {
     "kubevirt.io/schedulable" = "true"
   }
   kubernetes_tolerations      = [
@@ -182,50 +181,46 @@ source "kubevirt-iso" "ubuntu" {
     }
   ]
   source_url                  = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
-  kubevirt_os_preference      = "ubuntu"
-  vm_disk_space               = "10Gi"
+  vm_disk_size                = "10Gi"
+  vm_name                     = "ubuntu"
+  vm_preference               = "ubuntu"
   # Optional fields
-  vm_cpu                       = "2"                              # default to '4'
-  vm_memory                    = "4Gi"                            # default to '8Gi'
-  vm_linux_cloud_init          = file("/path/to/cloud-init.yaml") # default to generic cloud-init file
-  vm_deployment_timeout        = "15m"                            # default to '10m'
-  vm_export_timeout            = "10m"                            # default to '5m'
+  communicator                 = "ssh"                            # default to 'ssh'
   source_aws_access_key_id     = var.source_aws_access_key_id     # default to ""
   source_aws_secret_access_key = var.source_aws_secret_access_key # default to ""
-
-  communicator                 = "ssh"                            # default to 'ssh'
-  ssh_port                     = 2222                             # default to a free local port
+  vm_cloud_init                = file("/path/to/cloud-init.yaml") # default to generic cloud-init file
+  vm_cpu                       = "2"                              # default to '4'
+  vm_export_timeout            = "10m"                            # default to '5m'
+  vm_install_timeout           = "15m"                            # default to '10m'
+  vm_memory                    = "4Gi"                            # default to '8Gi'
 }
 
  build {
-   sources = ["source.kubevirt-iso.ubuntu"]
+   sources = ["source.kubevirt.ubuntu"]
  }
 ```
 
 #### Windows
 ```hcl
-source "kubevirt-iso" "windows" {
-  vm_name                = "windows"
-  kubernetes_namespace   = "default"
-  source_url             = "https://example.com/windows-11.iso"
-  kubevirt_os_preference = "windows.11.virtio"
-  vm_disk_space          = "64Gi"
-  vm_windows_sysprep     = file("/path/to/autounattend.xml")
-  vm_deployment_timeout  = "90m"
-  vm_export_timeout      = "20m"
-
-  boot_wait              = "1s"
-  boot_command           = [for i in range(30) : "<up><wait1s>"]
-
-  communicator           = "winrm"
-  winrm_timeout          = "10m"
-
-  shutdown_command       = "C:\\Windows\\System32\\Sysprep\\Sysprep.exe /generalize /oobe /shutdown /quiet"
-  shutdown_timeout       = "30m"
+source "kubevirt" "windows" {
+  boot_command         = [for i in range(30) : "<up><wait1s>"]
+  boot_wait            = "1s"
+  communicator         = "winrm"
+  kubernetes_namespace = "default"
+  shutdown_command     = "C:\\Windows\\System32\\Sysprep\\Sysprep.exe /generalize /oobe /shutdown /quiet"
+  shutdown_timeout     = "30m"
+  source_url           = "https://example.com/windows-11.iso"
+  vm_autounattend      = file("/path/to/autounattend.xml")
+  vm_disk_size         = "64Gi"
+  vm_export_timeout    = "20m"
+  vm_install_timeout   = "90m"
+  vm_name              = "windows"
+  vm_preference        = "windows.11.virtio"
+  winrm_timeout        = "10m"
 }
 
 build {
-  sources = ["source.kubevirt-iso.windows"]
+  sources = ["source.kubevirt.windows"]
 }
 ```
 
@@ -237,10 +232,10 @@ The VM gets four drives. Your answer file has to follow them:
 
 | Drive | Content | Attached as |
 |---|---|---|
-| `C:` | System disk, blank, of `vm_disk_space`. This is the disk that is exported | disk, on the bus of the preference |
+| `C:` | System disk, blank, of `vm_disk_size`. This is the disk that is exported | disk, on the bus of the preference |
 | `D:` | Install ISO of `source_url` | SATA CD-ROM |
 | `E:` | [virtio drivers](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/) and the guest agent | SATA CD-ROM |
-| `F:` | `autounattend.xml` of `vm_windows_sysprep` | SATA CD-ROM |
+| `F:` | `autounattend.xml` of `vm_autounattend` | SATA CD-ROM |
 
 The firmware, Secure Boot and the TPM come from the preference: `windows.11` and `windows.11.virtio` give UEFI with Secure Boot and a TPM.
 With a `virtio` preference the system disk is a virtio disk, so the answer file has to load the `viostor` driver of `E:` during the setup.

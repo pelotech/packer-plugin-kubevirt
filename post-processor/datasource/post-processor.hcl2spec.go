@@ -19,9 +19,9 @@ type FlatConfig struct {
 	PackerUserVars      map[string]string `mapstructure:"packer_user_variables" cty:"packer_user_variables" hcl:"packer_user_variables"`
 	PackerSensitiveVars []string          `mapstructure:"packer_sensitive_variables" cty:"packer_sensitive_variables" hcl:"packer_sensitive_variables"`
 	DataSourceName      *string           `mapstructure:"datasource_name" required:"false" cty:"datasource_name" hcl:"datasource_name"`
-	Namespace           *string           `mapstructure:"namespace" required:"false" cty:"namespace" hcl:"namespace"`
+	DataSourceNamespace *string           `mapstructure:"datasource_namespace" required:"false" cty:"datasource_namespace" hcl:"datasource_namespace"`
 	VolumeSize          *string           `mapstructure:"volume_size" required:"false" cty:"volume_size" hcl:"volume_size"`
-	StorageClass        *string           `mapstructure:"storage_class" required:"false" cty:"storage_class" hcl:"storage_class"`
+	VolumeStorageClass  *string           `mapstructure:"volume_storage_class" required:"false" cty:"volume_storage_class" hcl:"volume_storage_class"`
 	DefaultPreference   *string           `mapstructure:"default_preference" required:"false" cty:"default_preference" hcl:"default_preference"`
 	DefaultInstanceType *string           `mapstructure:"default_instance_type" required:"false" cty:"default_instance_type" hcl:"default_instance_type"`
 	ImportTimeOut       *string           `mapstructure:"import_timeout" required:"false" cty:"import_timeout" hcl:"import_timeout"`
@@ -49,9 +49,9 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"packer_user_variables":      &hcldec.AttrSpec{Name: "packer_user_variables", Type: cty.Map(cty.String), Required: false},
 		"packer_sensitive_variables": &hcldec.AttrSpec{Name: "packer_sensitive_variables", Type: cty.List(cty.String), Required: false},
 		"datasource_name":            &hcldec.AttrSpec{Name: "datasource_name", Type: cty.String, Required: false},
-		"namespace":                  &hcldec.AttrSpec{Name: "namespace", Type: cty.String, Required: false},
+		"datasource_namespace":       &hcldec.AttrSpec{Name: "datasource_namespace", Type: cty.String, Required: false},
 		"volume_size":                &hcldec.AttrSpec{Name: "volume_size", Type: cty.String, Required: false},
-		"storage_class":              &hcldec.AttrSpec{Name: "storage_class", Type: cty.String, Required: false},
+		"volume_storage_class":       &hcldec.AttrSpec{Name: "volume_storage_class", Type: cty.String, Required: false},
 		"default_preference":         &hcldec.AttrSpec{Name: "default_preference", Type: cty.String, Required: false},
 		"default_instance_type":      &hcldec.AttrSpec{Name: "default_instance_type", Type: cty.String, Required: false},
 		"import_timeout":             &hcldec.AttrSpec{Name: "import_timeout", Type: cty.String, Required: false},

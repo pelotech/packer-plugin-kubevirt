@@ -52,7 +52,7 @@ func ValidateDataSourceOptions(opts DataSourceOptions) error {
 	}
 	if opts.Namespace != "" {
 		if problems := validation.IsDNS1123Label(opts.Namespace); len(problems) > 0 {
-			return fmt.Errorf("invalid 'namespace' value '%s': %s", opts.Namespace, strings.Join(problems, ", "))
+			return fmt.Errorf("invalid 'datasource_namespace' value '%s': %s", opts.Namespace, strings.Join(problems, ", "))
 		}
 	}
 	if opts.VolumeSize != "" {
@@ -62,7 +62,7 @@ func ValidateDataSourceOptions(opts DataSourceOptions) error {
 	}
 	if opts.StorageClass != "" {
 		if problems := validation.IsDNS1123Subdomain(opts.StorageClass); len(problems) > 0 {
-			return fmt.Errorf("invalid 'storage_class' value '%s': %s", opts.StorageClass, strings.Join(problems, ", "))
+			return fmt.Errorf("invalid 'volume_storage_class' value '%s': %s", opts.StorageClass, strings.Join(problems, ", "))
 		}
 	}
 	if problems := validation.IsValidLabelValue(opts.DefaultPreference); len(problems) > 0 {

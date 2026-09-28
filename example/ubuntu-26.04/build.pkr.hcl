@@ -1,20 +1,20 @@
 packer {
   required_plugins {
-    kubevirt = {
-      version = ">= 0.1.0" # x-release-please-version
-      source  = "github.com/pelotech/kubevirt"
-    }
     ansible = {
-      version = "~> 1"
       source  = "github.com/hashicorp/ansible"
+      version = "~> 1"
+    }
+    kubevirt = {
+      source  = "github.com/pelotech/kubevirt"
+      version = ">= 0.1.0" # x-release-please-version
     }
   }
 }
 
-source "kubevirt-iso" "linux" {
-  vm_name              = "base-ubuntu-2604"
+source "kubevirt" "linux" {
+  communicator         = "ssh" # Optional, default to 'ssh'
   kubernetes_namespace = "${var.kubernetes_namespace}-linux"
-  kubernetes_node_selectors = {
+  kubernetes_node_selector = {
     "kubevirt.io/schedulable" = "true"
   }
   kubernetes_tolerations = [
@@ -25,22 +25,20 @@ source "kubevirt-iso" "linux" {
       effect   = "NoSchedule"
     }
   ]
-  kubevirt_os_preference = "ubuntu"
-  vm_disk_space          = "4Gi"
-  vm_cpu                 = var.vm_cpu    # Optional, default to '4'
-  vm_memory              = var.vm_memory # Optional, default to '8Gi'
-  vm_linux_cloud_init    = file("${path.root}/cloud-init.yaml")
-  # Optional (default file will be picked up)
-  vm_deployment_timeout = "15m" # Optional, default to '10m'
-  vm_export_timeout     = "10m" # Optional, default to '5m'
-  source_url            = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
-  communicator          = "ssh" # Optional, default to 'ssh'
-  ssh_port              = 2222  # Optional, default to a free local port
+  source_url         = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
+  vm_cloud_init      = file("${path.root}/cloud-init.yaml") # Optional (default file will be picked up)
+  vm_cpu             = var.vm_cpu                           # Optional, default to '4'
+  vm_disk_size       = "4Gi"
+  vm_export_timeout  = "10m"         # Optional, default to '5m'
+  vm_install_timeout = "15m"         # Optional, default to '10m'
+  vm_memory          = var.vm_memory # Optional, default to '8Gi'
+  vm_name            = "base-ubuntu-2604"
+  vm_preference      = "ubuntu"
 }
 
 build {
   sources = [
-    "source.kubevirt-iso.linux"
+    "source.kubevirt.linux"
   ]
 
   provisioner "ansible" {
@@ -52,29 +50,32 @@ build {
   }
 
   post-processor "kubevirt-s3" {
-    name                  = "s3"
-    s3_bucket             = var.destination_aws_s3_bucket
-    s3_key_prefix         = var.destination_aws_s3_key_prefix
-    s3_endpoint_url       = var.destination_s3_endpoint_url # Optional
-    aws_region            = var.destination_aws_region
-    service_account_name  = var.destination_service_account_name
-    aws_access_key_id     = var.destination_aws_access_key_id
-    aws_secret_access_key = var.destination_aws_secret_access_key
-    upload_timeout        = "10m" # Optional
-    keep_export           = true  # Optional, the next post-processor uses the export too
+    name = "s3"
+
+    keep_export          = true # Optional, the next post-processor uses the export too
+    s3_access_key_id     = var.destination_s3_access_key_id
+    s3_bucket            = var.destination_s3_bucket
+    s3_endpoint_url      = var.destination_s3_endpoint_url # Optional
+    s3_key_prefix        = var.destination_s3_key_prefix
+    s3_region            = var.destination_s3_region
+    s3_secret_access_key = var.destination_s3_secret_access_key
+    service_account_name = var.destination_service_account_name
+    upload_timeout       = "10m" # Optional
   }
 
   post-processor "kubevirt-oci" {
-    name              = "oci"
+    name = "oci"
+
     image             = var.destination_oci_image
-    registry_username = var.destination_oci_registry_username # Optional
-    registry_password = var.destination_oci_registry_password # Optional
-    registry_insecure = var.destination_oci_registry_insecure # Optional
     keep_export       = true                                  # Optional, the next post-processor uses the export too
+    registry_insecure = var.destination_oci_registry_insecure # Optional
+    registry_password = var.destination_oci_registry_password # Optional
+    registry_username = var.destination_oci_registry_username # Optional
   }
 
   post-processor "kubevirt-datasource" {
-    name            = "datasource"
+    name = "datasource"
+
     datasource_name = "base-ubuntu" # Optional, default to vm_name
   }
 }

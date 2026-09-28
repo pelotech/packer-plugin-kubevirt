@@ -26,9 +26,9 @@ type Config struct {
 	packercommon.PackerConfig `mapstructure:",squash"`
 	ctx                       interpolate.Context
 	DataSourceName            string        `mapstructure:"datasource_name" required:"false"`
-	Namespace                 string        `mapstructure:"namespace" required:"false"`
+	DataSourceNamespace       string        `mapstructure:"datasource_namespace" required:"false"`
 	VolumeSize                string        `mapstructure:"volume_size" required:"false"`
-	StorageClass              string        `mapstructure:"storage_class" required:"false"`
+	VolumeStorageClass        string        `mapstructure:"volume_storage_class" required:"false"`
 	DefaultPreference         string        `mapstructure:"default_preference" required:"false"`
 	DefaultInstanceType       string        `mapstructure:"default_instance_type" required:"false"`
 	ImportTimeOut             time.Duration `mapstructure:"import_timeout" required:"false"`
@@ -57,9 +57,9 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 
 	err = common.ValidateDataSourceOptions(common.DataSourceOptions{
 		Name:                p.config.DataSourceName,
-		Namespace:           p.config.Namespace,
+		Namespace:           p.config.DataSourceNamespace,
 		VolumeSize:          p.config.VolumeSize,
-		StorageClass:        p.config.StorageClass,
+		StorageClass:        p.config.VolumeStorageClass,
 		DefaultPreference:   p.config.DefaultPreference,
 		DefaultInstanceType: p.config.DefaultInstanceType,
 	})
@@ -100,13 +100,13 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 	dataSourceName := cmp.Or(p.config.DataSourceName, export.Name)
 	options := common.DataSourceOptions{
 		Name:                    dataSourceName,
-		Namespace:               cmp.Or(p.config.Namespace, export.Namespace),
+		Namespace:               cmp.Or(p.config.DataSourceNamespace, export.Namespace),
 		VolumeName:              common.BuildVolumeName(dataSourceName, time.Now()),
 		ExportServerUrl:         exportServerUrl,
 		ExportServerToken:       token,
 		ExportServerCertificate: export.Status.Links.Internal.Cert,
 		VolumeSize:              cmp.Or(p.config.VolumeSize, diskSize),
-		StorageClass:            p.config.StorageClass,
+		StorageClass:            p.config.VolumeStorageClass,
 		DefaultPreference:       cmp.Or(p.config.DefaultPreference, preference),
 		DefaultInstanceType:     p.config.DefaultInstanceType,
 	}

@@ -165,9 +165,9 @@ func TestValidateDataSourceOptions(t *testing.T) {
 
 	invalid := map[string]DataSourceOptions{
 		"datasource_name":       {Name: "Base_Ubuntu"},
-		"namespace":             {Namespace: "images.linux"},
+		"datasource_namespace":  {Namespace: "images.linux"},
 		"volume_size":           {VolumeSize: "10 gigabytes"},
-		"storage_class":         {StorageClass: "Fast Storage"},
+		"volume_storage_class":  {StorageClass: "Fast Storage"},
 		"default_preference":    {DefaultPreference: "ubuntu/26.04"},
 		"default_instance_type": {DefaultInstanceType: strings.Repeat("u", 64)},
 	}

@@ -28,9 +28,9 @@ type Config struct {
 	S3EndpointUrl             string `mapstructure:"s3_endpoint_url" required:"false"`
 
 	ServiceAccountName string        `mapstructure:"service_account_name"`
-	AWSAccessKeyId     string        `mapstructure:"aws_access_key_id"`
-	AWSSecretAccessKey string        `mapstructure:"aws_secret_access_key"`
-	AWSRegion          string        `mapstructure:"aws_region"`
+	S3AccessKeyId      string        `mapstructure:"s3_access_key_id"`
+	S3SecretAccessKey  string        `mapstructure:"s3_secret_access_key"`
+	S3Region           string        `mapstructure:"s3_region"`
 	UploadTimeOut      time.Duration `mapstructure:"upload_timeout" required:"false"`
 	ImageFormat        string        `mapstructure:"image_format" required:"false"`
 	KeepExport         bool          `mapstructure:"keep_export" required:"false"`
@@ -80,8 +80,8 @@ func (p *PostProcessor) Configure(raws ...interface{}) error {
 		p.config.UploadTimeOut = 10 * time.Minute
 	}
 
-	if (p.config.AWSAccessKeyId == "" || p.config.AWSSecretAccessKey == "") && p.config.ServiceAccountName == "" {
-		return fmt.Errorf("either AWS access keys or service account name must be provided")
+	if (p.config.S3AccessKeyId == "" || p.config.S3SecretAccessKey == "") && p.config.ServiceAccountName == "" {
+		return fmt.Errorf("either S3 access keys or service account name must be provided")
 	}
 
 	return nil
@@ -134,7 +134,7 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		S3KeyPrefix:             p.config.S3KeyPrefix,
 		ObjectName:              p.config.S3ObjectName,
 		S3EndpointUrl:           p.config.S3EndpointUrl,
-		AWSRegion:               p.config.AWSRegion,
+		AWSRegion:               p.config.S3Region,
 		ImageFormat:             p.config.ImageFormat,
 	}
 	if p.config.ServiceAccountName != "" {
@@ -142,8 +142,8 @@ func (p *PostProcessor) PostProcess(_ context.Context, ui packersdk.Ui, source p
 		options.ServiceAccountName = &p.config.ServiceAccountName
 	} else {
 		// Default to AWS credentials
-		options.AWSAccessKeyId = &p.config.AWSAccessKeyId
-		options.AWSSecretAccessKey = &p.config.AWSSecretAccessKey
+		options.AWSAccessKeyId = &p.config.S3AccessKeyId
+		options.AWSSecretAccessKey = &p.config.S3SecretAccessKey
 	}
 
 	job := common.GenerateS3UploaderJob(export, options)

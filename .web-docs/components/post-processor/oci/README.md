@@ -6,7 +6,7 @@ Type: `kubevirt-oci`
   be helpful to a user. See https://www.packer.io/docs/provisioner/null
 -->
 
-The OCI post-processor is used to publish the disk image produced by the `kubevirt-iso` builder as a [containerDisk](https://kubevirt.io/user-guide/storage/disks_and_volumes/#containerdisk) image in a container registry.
+The OCI post-processor is used to publish the disk image produced by the `kubevirt` builder as a [containerDisk](https://kubevirt.io/user-guide/storage/disks_and_volumes/#containerdisk) image in a container registry.
 A Kubernetes job downloads the disk image from the Virtual Machine Export and pushes an image with a single layer, holding the disk at `/disk/<vm_name>.qcow2` and owned by the user and group `107`.
 KubeVirt boots that image with a `containerDisk` volume and CDI imports it with a `registry` source.
 
@@ -32,33 +32,33 @@ An image without a tag or with a digest is rejected, the digest is only known on
 **Optional**
 
 - Credentials of the registry, the image is pushed anonymously without them:
-  - `registry_username` (string) and `registry_password` (string) - Credentials stored as a docker config in a secret owned by the job.
-  Sensitive fields
   - `registry_secret_name` (string) - Name of an existing secret of type `kubernetes.io/dockerconfigjson` in the namespace of the build.
   It cannot be used with `registry_username` and `registry_password`
+  - `registry_username` (string) and `registry_password` (string) - Credentials stored as a docker config in a secret owned by the job.
+  Sensitive fields
   - `service_account_name` (string) - Service Account Name of the job, for the registries of cloud providers that authenticate the workload
-
-- `registry_insecure` (bool) -  Allow a registry served over plain HTTP or with an untrusted certificate
-Defaults to `false`
-
-- `image_format` (string) -  Format of the disk in the image, converted with `qemu-img`. A `raw` disk is stored as `/disk/<vm_name>.img`.
-The job needs scratch space for twice the size of the raw disk
-Accepted values: `qcow2`, `raw` - Defaults to `qcow2`
-
-- `default_preference` (string) -  KubeVirt preference a Virtual Machine created from the image defaults to.
-It is set on the image as `INSTANCETYPE_KUBEVIRT_IO_DEFAULT_PREFERENCE`, CDI turns it into the label `instancetype.kubevirt.io/default-preference` on import
-Defaults to the `kubevirt_os_preference` of the builder
 
 - `default_instance_type` (string) -  KubeVirt instance type a Virtual Machine created from the image defaults to.
 It is set on the image as `INSTANCETYPE_KUBEVIRT_IO_DEFAULT_INSTANCETYPE`, CDI turns it into the label `instancetype.kubevirt.io/default-instancetype` on import
 Defaults to empty string (not set on the image)
 
-- `upload_timeout` (duration string) -  Timeout duration for the download, the conversion and the push
-Defaults to `10m`
+- `default_preference` (string) -  KubeVirt preference a Virtual Machine created from the image defaults to.
+It is set on the image as `INSTANCETYPE_KUBEVIRT_IO_DEFAULT_PREFERENCE`, CDI turns it into the label `instancetype.kubevirt.io/default-preference` on import
+Defaults to the `vm_preference` of the builder
+
+- `image_format` (string) -  Format of the disk in the image, converted with `qemu-img`. A `raw` disk is stored as `/disk/<vm_name>.img`.
+The job needs scratch space for twice the size of the raw disk
+Accepted values: `qcow2`, `raw` - Defaults to `qcow2`
 
 - `keep_export` (bool) -  Keep the Virtual Machine Export once done, for another post-processor to use it.
 The last post-processor of a build should delete it: with the export go the stopped Virtual Machine and its disk. Otherwise they stay until the export expires, after 2 hours by default
 Defaults to `false`
+
+- `registry_insecure` (bool) -  Allow a registry served over plain HTTP or with an untrusted certificate
+Defaults to `false`
+
+- `upload_timeout` (duration string) -  Timeout duration for the download, the conversion and the push
+Defaults to `10m`
 
 <!--
   A basic example on the usage of the post-processor. Multiple examples
@@ -69,19 +69,19 @@ Defaults to `false`
 
 
 ```hcl
- source "kubevirt-iso" "linux" {
+ source "kubevirt" "linux" {
   ...
  }
 
 build {
-  sources = ["source.kubevirt-iso.linux"]
+  sources = ["source.kubevirt.linux"]
 
   post-processor "kubevirt-oci" {
-    image                 = "ghcr.io/pelotech/base-ubuntu:26.04"
-    registry_username     = "REGISTRY_USERNAME"
-    registry_password     = "REGISTRY_PASSWORD"
-    image_format          = "qcow2"                       # Optional
     default_instance_type = "u1.medium"                   # Optional
+    image                 = "ghcr.io/pelotech/base-ubuntu:26.04"
+    image_format          = "qcow2"                       # Optional
+    registry_password     = "REGISTRY_PASSWORD"
+    registry_username     = "REGISTRY_USERNAME"
     upload_timeout        = "10m"                         # Optional
   }
 }
