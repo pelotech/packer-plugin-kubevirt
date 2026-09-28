@@ -25,7 +25,10 @@ func (s *StepDeployVM) Run(ctx context.Context, state multistep.StateBag) multis
 
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ns}}
 	_, err := s.Clients.Kubernetes.CoreV1().Namespaces().Create(ctx, namespace, metav1.CreateOptions{})
-	if err != nil && !errors.IsAlreadyExists(err) {
+	// Kubernetes checks the right to create before existence, so an identity limited to the namespace is refused even when it exists
+	if errors.IsForbidden(err) {
+		ui.Message(fmt.Sprintf("not allowed to create namespaces, so namespace %s is not created by the build and must exist", ns))
+	} else if err != nil && !errors.IsAlreadyExists(err) {
 		return appContext.Halt(fmt.Errorf("failed to create namespace for Virtual Machine %s/%s: %s", ns, name, err))
 	}
 
