@@ -2,14 +2,17 @@ package k8s
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/portforward"
@@ -26,6 +29,7 @@ import (
 	"os"
 	"packer-plugin-kubevirt/builder/common"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -102,55 +106,71 @@ func runPortForward(clients *Clients, podName, namespace string, ports []string,
 	return forwarder.ForwardPorts()
 }
 
-func WaitForResource(client cache.Getter, namespace, resource, name, version string, timeout time.Duration, handleEvent watchtools.ConditionFunc) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
-	defer cancel()
+// ResourceClient lists and watches the resources of one kind, as the typed clients do
+type ResourceClient[L runtime.Object] interface {
+	List(ctx context.Context, options metav1.ListOptions) (L, error)
+	Watch(ctx context.Context, options metav1.ListOptions) (watch.Interface, error)
+}
 
-	listWatch := cache.NewListWatchFromClient(client, resource, namespace, fields.OneTermEqualSelector("metadata.name", name))
-	_, err := watchtools.Until(ctx, version, listWatch, handleEvent)
+// WaitForResource lists, then watches the named resource until the condition is met, and watches again when the API server closes the watch
+func WaitForResource[T, L runtime.Object](ctx context.Context, clientset any, resources ResourceClient[L], name string, timeout time.Duration, condition func(T) (bool, error)) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+
+	fieldSelector := fields.OneTermEqualSelector("metadata.name", name).String()
+	var firstList sync.Once
+	listWatch := cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
+		ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+			options.FieldSelector = fieldSelector
+			list, err := resources.List(ctx, options)
+			// a first list that fails is a setup error, which the informer would retry until the timeout
+			firstList.Do(func() {
+				if err != nil {
+					stop(fmt.Errorf("failed to get the state of '%s': %w", name, err))
+				}
+			})
+			return list, err
+		},
+		WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+			options.FieldSelector = fieldSelector
+			return resources.Watch(ctx, options)
+		},
+	}, clientset)
+
+	var resourceType T
+	_, err := watchtools.UntilWithSync(ctx, listWatch, resourceType, nil, func(event watch.Event) (bool, error) {
+		resource, ok := event.Object.(T)
+		if !ok {
+			return false, nil
+		}
+		return condition(resource)
+	})
+	if wait.Interrupted(err) {
+		return context.Cause(ctx)
+	}
 	return err
 }
 
 func WaitForJobCompletion(client kubernetes.Interface, ui packersdk.Ui, job *batchv1.Job, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
-	defer cancel()
-
-	watcher, err := client.BatchV1().Jobs(job.Namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector("metadata.name", job.Name).String(),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get job state %s/%s: %w", job.Namespace, job.Name, err)
-	}
-	defer watcher.Stop()
-
-	for {
-		select {
-		case event, ok := <-watcher.ResultChan():
-			if !ok {
-				if ctx.Err() != nil {
-					return fmt.Errorf("timeout waiting for job to be completed: %s", describeJobPods(client, job))
-				}
-				return fmt.Errorf("watch closed before job was completed: %s", describeJobPods(client, job))
+	err := WaitForResource(context.TODO(), client, client.BatchV1().Jobs(job.Namespace), job.Name, timeout, func(updatedJob *batchv1.Job) (bool, error) {
+		for index, condition := range updatedJob.Status.Conditions {
+			if index == 0 {
+				ui.Message(fmt.Sprintf("condition '%s' changed to '%s'", condition.Type, condition.Status))
 			}
-			updatedJob, ok := event.Object.(*batchv1.Job)
-			if !ok {
-				continue
+			if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
+				return true, nil
+			} else if (condition.Type == batchv1.JobFailed || condition.Type == batchv1.JobFailureTarget) && condition.Status == corev1.ConditionTrue {
+				return false, fmt.Errorf("job condition changed to failed: %s", describeJobPods(client, job))
 			}
-			for index, condition := range updatedJob.Status.Conditions {
-				if index == 0 {
-					ui.Message(fmt.Sprintf("condition '%s' changed to '%s'", condition.Type, condition.Status))
-				}
-				if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
-					return nil
-				} else if (condition.Type == batchv1.JobFailed || condition.Type == batchv1.JobFailureTarget) && condition.Status == corev1.ConditionTrue {
-					return fmt.Errorf("job condition changed to failed: %s", describeJobPods(client, job))
-				}
-			}
-
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for job to be completed: %s", describeJobPods(client, job))
 		}
+		return false, nil
+	})
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("timeout waiting for job to be completed: %s", describeJobPods(client, job))
 	}
+	return err
 }
 
 func describeJobPods(client kubernetes.Interface, job *batchv1.Job) string {
@@ -226,7 +246,7 @@ func WaitForVirtualMachineStopped(client kvcorev1.VirtualMachineInterface, name 
 func WaitForVirtualMachineInstanceRunning(client kvcorev1.VirtualMachineInstanceInterface, name string, timeout time.Duration) error {
 	err := wait.PollUntilContextTimeout(context.Background(), VirtualMachineStopPollInterval, timeout, true, func(ctx context.Context) (bool, error) {
 		instance, err := client.Get(ctx, name, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			// the instance is created once the volumes are imported
 			return false, nil
 		}
@@ -253,47 +273,25 @@ func OpenConsole(clients *Clients, namespace, name string) (net.Conn, error) {
 }
 
 func WaitForDataVolumeImport(clients *Clients, ui packersdk.Ui, dataVolume *cdiv1beta1.DataVolume, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), timeout)
-	defer cancel()
-
-	watcher, err := clients.CDI.CdiV1beta1().DataVolumes(dataVolume.Namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector("metadata.name", dataVolume.Name).String(),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get Data Volume state %s/%s: %w", dataVolume.Namespace, dataVolume.Name, err)
-	}
-	defer watcher.Stop()
-
 	var progress string
-	for {
-		select {
-		case event, ok := <-watcher.ResultChan():
-			if !ok {
-				if ctx.Err() != nil {
-					return fmt.Errorf("timeout waiting for Data Volume to be imported: %s", describeDataVolumeImport(clients, dataVolume))
-				}
-				return fmt.Errorf("watch closed before Data Volume was imported: %s", describeDataVolumeImport(clients, dataVolume))
-			}
-			updatedDataVolume, ok := event.Object.(*cdiv1beta1.DataVolume)
-			if !ok {
-				continue
-			}
-			status := updatedDataVolume.Status
-			updatedProgress := fmt.Sprintf("phase '%s', progress '%s'", status.Phase, status.Progress)
-			if status.Phase != cdiv1beta1.PhaseUnset && updatedProgress != progress {
-				progress = updatedProgress
-				ui.Message(progress)
-			}
-			if status.Phase == cdiv1beta1.Succeeded {
-				return nil
-			} else if status.Phase == cdiv1beta1.Failed {
-				return fmt.Errorf("import of Data Volume failed: %s", describeDataVolumeImport(clients, dataVolume))
-			}
-
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for Data Volume to be imported: %s", describeDataVolumeImport(clients, dataVolume))
+	err := WaitForResource(context.TODO(), clients.CDI, clients.CDI.CdiV1beta1().DataVolumes(dataVolume.Namespace), dataVolume.Name, timeout, func(updatedDataVolume *cdiv1beta1.DataVolume) (bool, error) {
+		status := updatedDataVolume.Status
+		updatedProgress := fmt.Sprintf("phase '%s', progress '%s'", status.Phase, status.Progress)
+		if status.Phase != cdiv1beta1.PhaseUnset && updatedProgress != progress {
+			progress = updatedProgress
+			ui.Message(progress)
 		}
+		if status.Phase == cdiv1beta1.Succeeded {
+			return true, nil
+		} else if status.Phase == cdiv1beta1.Failed {
+			return false, fmt.Errorf("import of Data Volume failed: %s", describeDataVolumeImport(clients, dataVolume))
+		}
+		return false, nil
+	})
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("timeout waiting for Data Volume to be imported: %s", describeDataVolumeImport(clients, dataVolume))
 	}
+	return err
 }
 
 func describeDataVolumeImport(clients *Clients, dataVolume *cdiv1beta1.DataVolume) string {

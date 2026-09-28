@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	VirtualMachineResourceName = "virtualmachines"
-	VirtualMachineExportKind   = "VirtualMachineExport"
+	VirtualMachineExportKind = "VirtualMachineExport"
 )
 
 type Clients struct {

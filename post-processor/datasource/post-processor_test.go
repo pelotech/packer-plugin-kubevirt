@@ -14,6 +14,7 @@ import (
 	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
+	"os"
 	buildercommon "packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	"path/filepath"
@@ -21,6 +22,12 @@ import (
 	"testing"
 	"time"
 )
+
+func TestMain(m *testing.M) {
+	// the CDI fake does not serve the streaming lists that client-go asks for by default
+	_ = os.Setenv("KUBE_FEATURE_WatchListClient", "false")
+	os.Exit(m.Run())
+}
 
 const exportServerUrl = "https://virt-export-base-ubuntu.packer.svc/volumes/base-ubuntu-source/disk.img.gz"
 

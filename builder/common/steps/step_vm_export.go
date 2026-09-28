@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	"github.com/hashicorp/packer-plugin-sdk/packer"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -94,39 +94,18 @@ func (s *StepExportVM) handOverVirtualMachine(vm *kubevirtv1.VirtualMachine, exp
 }
 
 func (s *StepExportVM) waitForExportReady(ui packer.Ui, export *exportv1.VirtualMachineExport) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), s.VmExportTimeOut)
-	defer cancel()
-
-	watcher, err := s.Clients.Kubevirt.ExportV1().VirtualMachineExports(export.Namespace).Watch(ctx, metav1.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector("metadata.name", export.Name).String(),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get Virtual Machine Export state: %w", err)
-	}
-	defer watcher.Stop()
-
-	for {
-		select {
-		case event, ok := <-watcher.ResultChan():
-			if !ok {
-				if ctx.Err() != nil {
-					return fmt.Errorf("timeout waiting for Virtual Machine Export to be ready")
-				}
-				return fmt.Errorf("watch closed before Virtual Machine Export was ready")
-			}
-			updatedExport, ok := event.Object.(*exportv1.VirtualMachineExport)
-			if !ok || updatedExport.Status == nil {
-				continue
-			}
-			ui.Message(fmt.Sprintf("phase '%s'", updatedExport.Status.Phase))
-			if updatedExport.Status.Phase == exportv1.Ready {
-				return nil
-			}
-
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for Virtual Machine Export to be ready")
+	exports := s.Clients.Kubevirt.ExportV1().VirtualMachineExports(export.Namespace)
+	err := k8s.WaitForResource(context.TODO(), s.Clients.Kubevirt, exports, export.Name, s.VmExportTimeOut, func(updatedExport *exportv1.VirtualMachineExport) (bool, error) {
+		if updatedExport.Status == nil {
+			return false, nil
 		}
+		ui.Message(fmt.Sprintf("phase '%s'", updatedExport.Status.Phase))
+		return updatedExport.Status.Phase == exportv1.Ready, nil
+	})
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("timeout waiting for Virtual Machine Export to be ready")
 	}
+	return err
 }
 
 func (s *StepExportVM) createTokenSecret(export *exportv1.VirtualMachineExport, token string) error {
