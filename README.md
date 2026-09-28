@@ -54,7 +54,7 @@ Linux builds are covered by the integration test. Windows 11 has its own, starte
 
 - A Kubernetes cluster with [KubeVirt](https://kubevirt.io/user-guide/cluster_admin/installation/) 1.9 or later and [CDI](https://github.com/kubevirt/containerized-data-importer), and nodes with KVM
 - The [preferences](https://github.com/kubevirt/common-instancetypes) you refer to with `vm_preference`
-- A kubeconfig for that cluster. The plugin uses your current context, or the service account of its pod when Packer runs in the cluster
+- A kubeconfig for that cluster. The plugin uses your current context, or the service account of its pod when Packer runs in the cluster. The [permissions](docs/builders/kubevirt.mdx#permissions) it needs fit in a namespaced Role
 - Packer. The integration test runs with the version of [mise.toml](mise.toml)
 
 ## Install
