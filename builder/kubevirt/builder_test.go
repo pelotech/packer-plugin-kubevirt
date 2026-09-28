@@ -384,6 +384,7 @@ func TestStepsReceiveTheGeneralizeSettings(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			builder := &Builder{config: Config{
+				Comm:                          communicator.Config{SSH: communicator.SSH{SSHUsername: "ubuntu"}},
 				VirtualMachinePreference:      test.preference,
 				VirtualMachineSkipVirtSysprep: test.skipVirtSysprep,
 				VirtualMachineExportTimeOut:   time.Minute,
@@ -398,8 +399,8 @@ func TestStepsReceiveTheGeneralizeSettings(t *testing.T) {
 			if generalize == nil {
 				t.Fatal("expected a generalize step")
 			}
-			if generalize.OsFamily != test.osFamily || generalize.SkipVirtSysprep != test.skipVirtSysprep || generalize.VmExportTimeOut != time.Minute {
-				t.Errorf("expected OS family %d, skip virt-sysprep %t and a 1m timeout, got: %+v", test.osFamily, test.skipVirtSysprep, generalize)
+			if generalize.OsFamily != test.osFamily || generalize.SkipVirtSysprep != test.skipVirtSysprep || generalize.UserToKeep != "ubuntu" || generalize.VmExportTimeOut != time.Minute {
+				t.Errorf("expected OS family %d, skip virt-sysprep %t, the user 'ubuntu' kept and a 1m timeout, got: %+v", test.osFamily, test.skipVirtSysprep, generalize)
 			}
 		})
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
 	packersdk "github.com/hashicorp/packer-plugin-sdk/packer"
+	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
@@ -14,6 +15,7 @@ import (
 	"packer-plugin-kubevirt/builder/common"
 	"packer-plugin-kubevirt/builder/common/k8s"
 	vmctx "packer-plugin-kubevirt/builder/common/vm"
+	"slices"
 	"testing"
 	"time"
 )
@@ -110,4 +112,29 @@ func TestStepGeneralizeLeavesWindowsToSysprep(t *testing.T) {
 		t.Errorf("expected the step to continue, got action: %v", action)
 	}
 	expectStoppedWithoutJob(t, state, kubevirtClient, kubeClient)
+}
+
+func TestStepGeneralizeKeepsTheUserOfTheBuild(t *testing.T) {
+	for name, test := range map[string]struct{ userToKeep, expected string }{
+		"ssh user":                  {userToKeep: "ubuntu", expected: "ubuntu"},
+		"no user, the default user": {userToKeep: "", expected: "packer"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			step, state, _, kubeClient := newGeneralizeStep(t, vmctx.Linux)
+			step.UserToKeep = test.userToKeep
+
+			var command []string
+			kubeClient.PrependReactor("create", "jobs", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				command = action.(k8stesting.CreateAction).GetObject().(*batchv1.Job).Spec.Template.Spec.Containers[0].Command
+				return true, nil, errors.New("halt the step once the job creation is reached")
+			})
+
+			step.Run(context.Background(), state)
+
+			keep := slices.Index(command, "--keep-user-accounts")
+			if keep < 0 || keep+1 >= len(command) || command[keep+1] != test.expected {
+				t.Errorf("expected virt-sysprep to keep the user '%s', got: %v", test.expected, command)
+			}
+		})
+	}
 }

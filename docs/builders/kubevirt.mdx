@@ -23,6 +23,7 @@ Once provisioned, the Virtual Machine is stopped, Linux disks are generalized wi
 (running as a Kubernetes job in the cluster, nothing to install locally) and the disk is exposed through a Virtual Machine Export.
 The export owns the stopped Virtual Machine: the disk stays as long as the export, and deleting the export removes the Virtual Machine and its disk.
 Windows is generalized by your shutdown command, see [Windows](#windows). `vm_skip_virt_sysprep` skips `virt-sysprep` for Linux.
+`virt-sysprep` removes the bash history, the machine ID and the user accounts, but keeps the SSH user of the build (`ssh_username`), root and the system accounts.
 
 <!-- Builder Configuration Fields -->
 

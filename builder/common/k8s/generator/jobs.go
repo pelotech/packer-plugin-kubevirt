@@ -21,7 +21,7 @@ const (
 	tmpDirPath           = "/tmp/guestfs"
 )
 
-func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine) *batchv1.Job {
+func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine, userToKeep string) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      vm.Name + GuestFSJobNameSuffix,
@@ -59,7 +59,7 @@ func GenerateGuestFSJob(vm *kubevirtv1.VirtualMachine) *batchv1.Job {
 								"--enable",
 								"bash-history,machine-id,user-account",
 								"--keep-user-accounts",
-								"packer",
+								userToKeep,
 							},
 							WorkingDir: vmDiskPath,
 							// LIBGUESTFS_BACKEND  -> use directly host qemu

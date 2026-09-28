@@ -284,6 +284,7 @@ func (b *Builder) steps() []multistep.Step {
 			Clients:         b.clients,
 			OsFamily:        osFamily,
 			SkipVirtSysprep: b.config.VirtualMachineSkipVirtSysprep,
+			UserToKeep:      b.config.Comm.SSHUsername,
 			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
 		},
 		&stepDef.StepExportVM{

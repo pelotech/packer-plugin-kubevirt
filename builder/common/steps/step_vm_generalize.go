@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"github.com/hashicorp/packer-plugin-sdk/multistep"
@@ -17,6 +18,8 @@ type StepGeneralize struct {
 	Clients         *k8s.Clients
 	OsFamily        vmctx.OsFamily
 	SkipVirtSysprep bool
+	// virt-sysprep removes the other user accounts
+	UserToKeep      string
 	VmExportTimeOut time.Duration
 }
 
@@ -39,7 +42,7 @@ func (s *StepGeneralize) Run(ctx context.Context, state multistep.StateBag) mult
 	if vmctx.Linux == s.OsFamily && !s.SkipVirtSysprep {
 		ui.Say(fmt.Sprintf("generify-ing with 'virt-sysprep' Virtual Machine for export %s/%s...", vm.Namespace, vm.Name))
 
-		job := generator.GenerateGuestFSJob(vm)
+		job := generator.GenerateGuestFSJob(vm, cmp.Or(s.UserToKeep, common.VirtualMachineUsername))
 
 		job, err = s.Clients.Kubernetes.BatchV1().Jobs(vm.Namespace).Create(ctx, job, metav1.CreateOptions{})
 		if err != nil {
