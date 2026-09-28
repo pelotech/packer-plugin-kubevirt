@@ -14,7 +14,7 @@ func TestBuildArtifactFromGeneratedExport(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
 	}
 	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
-	appContext.Put(common.VirtualMachineExport, generator.GenerateVirtualMachineExport(vm))
+	appContext.Put(common.VirtualMachineExport, generator.GenerateVirtualMachineExport(vm, 0))
 	appContext.Put(common.VirtualMachineExportToken, "token")
 
 	artifact := appContext.BuildArtifact("kubevirt.iso")
@@ -32,7 +32,7 @@ func TestBuildArtifactWithPreference(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
 	}
 	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
-	appContext.Put(common.VirtualMachineExport, generator.GenerateVirtualMachineExport(vm))
+	appContext.Put(common.VirtualMachineExport, generator.GenerateVirtualMachineExport(vm, 0))
 	appContext.Put(common.VirtualMachineExportToken, "token")
 	appContext.Put(common.Preference, "ubuntu")
 
@@ -48,7 +48,7 @@ func TestBuildArtifactWithDiskSize(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "base-ubuntu", Namespace: "packer"},
 	}
 	appContext := &common.AppContext{State: new(multistep.BasicStateBag)}
-	appContext.Put(common.VirtualMachineExport, generator.GenerateVirtualMachineExport(vm))
+	appContext.Put(common.VirtualMachineExport, generator.GenerateVirtualMachineExport(vm, 0))
 	appContext.Put(common.VirtualMachineExportToken, "token")
 
 	if diskSize := appContext.BuildArtifact("kubevirt.iso").State(common.DiskSizeArtifactKey); diskSize != "" {

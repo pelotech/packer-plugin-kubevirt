@@ -51,6 +51,7 @@ type Config struct {
 	VirtualMachineMemory            string              `mapstructure:"vm_memory" required:"false"`
 	VirtualMachineDeploymentTimeOut time.Duration       `mapstructure:"vm_deployment_timeout" required:"false"`
 	VirtualMachineExportTimeOut     time.Duration       `mapstructure:"vm_export_timeout" required:"false"`
+	VirtualMachineExportTTL         time.Duration       `mapstructure:"vm_export_ttl" required:"false"`
 	VirtualMachineSkipVirtSysprep   bool                `mapstructure:"vm_skip_virt_sysprep" required:"false"`
 	VirtualMachineLinuxCloudInit    string              `mapstructure:"vm_linux_cloud_init" required:"false"`
 	VirtualMachineWindowsSysprep    string              `mapstructure:"vm_windows_sysprep" required:"false"`
@@ -82,6 +83,10 @@ func (b *Builder) Prepare(raws ...interface{}) (generatedVars []string, warnings
 
 	if b.config.VirtualMachineExportTimeOut == 0 {
 		b.config.VirtualMachineExportTimeOut = 5 * time.Minute
+	}
+
+	if b.config.VirtualMachineExportTTL < 0 {
+		return nil, nil, fmt.Errorf("invalid 'vm_export_ttl' value '%s': must be positive", b.config.VirtualMachineExportTTL)
 	}
 
 	if b.config.VirtualMachineCPU == "" {
@@ -241,6 +246,7 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		&stepDef.StepExportVM{
 			Clients:         b.clients,
 			VmExportTimeOut: b.config.VirtualMachineExportTimeOut,
+			VmExportTTL:     b.config.VirtualMachineExportTTL,
 		},
 	}
 

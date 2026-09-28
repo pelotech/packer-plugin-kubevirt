@@ -27,6 +27,7 @@ const (
 type StepExportVM struct {
 	Clients         *k8s.Clients
 	VmExportTimeOut time.Duration
+	VmExportTTL     time.Duration
 }
 
 func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multistep.StepAction {
@@ -66,7 +67,7 @@ func (s *StepExportVM) Run(_ context.Context, state multistep.StateBag) multiste
 }
 
 func (s *StepExportVM) createExport(vm *kubevirtv1.VirtualMachine) (*exportv1.VirtualMachineExport, error) {
-	export := generator.GenerateVirtualMachineExport(vm)
+	export := generator.GenerateVirtualMachineExport(vm, s.VmExportTTL)
 	export, err := s.Clients.Kubevirt.ExportV1().VirtualMachineExports(vm.Namespace).Create(context.TODO(), export, metav1.CreateOptions{})
 	if k8serrors.IsNotFound(err) {
 		return nil, fmt.Errorf("the cluster does not serve '%s', which needs KubeVirt 1.9 or later: %w", exportv1.SchemeGroupVersion, err)

@@ -7,6 +7,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	exportv1 "kubevirt.io/api/export/v1"
 	"packer-plugin-kubevirt/builder/common/k8s"
+	"time"
 )
 
 const (
@@ -30,7 +31,7 @@ func GenerateTokenSecret(export *exportv1.VirtualMachineExport, token string) *c
 	}
 }
 
-func GenerateVirtualMachineExport(vm *kubevirtv1.VirtualMachine) *exportv1.VirtualMachineExport {
+func GenerateVirtualMachineExport(vm *kubevirtv1.VirtualMachine, ttl time.Duration) *exportv1.VirtualMachineExport {
 	exportSource := corev1.TypedLocalObjectReference{
 		APIGroup: &kubevirtv1.VirtualMachineGroupVersionKind.Group,
 		Kind:     kubevirtv1.VirtualMachineGroupVersionKind.Kind,
@@ -38,7 +39,7 @@ func GenerateVirtualMachineExport(vm *kubevirtv1.VirtualMachine) *exportv1.Virtu
 	}
 	secretName := buildSecretName(vm.Name, tokenSecretSuffix)
 
-	return &exportv1.VirtualMachineExport{
+	export := &exportv1.VirtualMachineExport{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      vm.Name,
 			Namespace: vm.Namespace,
@@ -48,6 +49,10 @@ func GenerateVirtualMachineExport(vm *kubevirtv1.VirtualMachine) *exportv1.Virtu
 			Source:         exportSource,
 		},
 	}
+	if ttl > 0 {
+		export.Spec.TTLDuration = &metav1.Duration{Duration: ttl}
+	}
+	return export
 }
 
 // GenerateExportOwnerReference makes an export the owner of the stopped Virtual Machine, without blocking its deletion
