@@ -1,0 +1,49 @@
+# Virtual Machine of the Secure Boot test: boot-test.yaml, still with the inferred ubuntu preference,
+# plus Secure Boot, SMM and a TPM set in the template, which win over the preference.
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: boot-test-secureboot
+  namespace: packer-linux
+spec:
+  runStrategy: Always
+  preference:
+    inferFromVolume: disk
+  dataVolumeTemplates:
+    - metadata:
+        name: boot-test-secureboot
+      spec:
+        sourceRef:
+          kind: DataSource
+          name: base-ubuntu
+        storage:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 4Gi
+  template:
+    spec:
+      domain:
+        cpu:
+          sockets: 1
+        memory:
+          guest: 2Gi
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: true
+              persistent: true
+        features:
+          smm:
+            enabled: true
+        devices:
+          tpm:
+            persistent: true
+          disks:
+            - name: disk
+              disk: {}
+      volumes:
+        - name: disk
+          dataVolume:
+            name: boot-test-secureboot

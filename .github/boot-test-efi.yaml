@@ -1,0 +1,39 @@
+# Virtual Machine of the EFI boot test: boot-test.yaml with the linux.efi preference instead of the inferred one.
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: boot-test-efi
+  namespace: packer-linux
+spec:
+  runStrategy: Always
+  preference:
+    kind: VirtualMachineClusterPreference
+    name: linux.efi
+  dataVolumeTemplates:
+    - metadata:
+        name: boot-test-efi
+      spec:
+        sourceRef:
+          kind: DataSource
+          name: base-ubuntu
+        storage:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 4Gi
+  template:
+    spec:
+      domain:
+        cpu:
+          sockets: 1
+        memory:
+          guest: 2Gi
+        devices:
+          disks:
+            - name: disk
+              disk: {}
+      volumes:
+        - name: disk
+          dataVolume:
+            name: boot-test-efi
