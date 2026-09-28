@@ -25,11 +25,11 @@ const (
 type VirtualMachineOptions struct {
 	Name             string
 	Namespace        string
-	NodeSelectors    map[string]string
+	NodeSelector     map[string]string
 	Tolerations      []corev1.Toleration
-	OsDistribution   string
+	Preference       string
 	OsFamily         vm.OsFamily
-	DiskSpace        string
+	DiskSize         string
 	CPU              string
 	Memory           string
 	ImageSource      ImageSource
@@ -53,8 +53,8 @@ func (s ImageSource) HasS3Credentials() bool {
 }
 
 type UserProvisioning struct {
-	CloudInit string
-	Sysprep   string
+	CloudInit    string
+	Autounattend string
 }
 
 type SecretSuffix string
@@ -104,7 +104,7 @@ func buildProbeExecCommand(family vm.OsFamily) []string {
 		}
 	case vm.Windows:
 		command = []string{
-			// NOTE: echo is 'acceptable' because qemu-ga is the last tool provisioned through sysprep.
+			// NOTE: echo is 'acceptable' because qemu-ga is the last tool provisioned through autounattend.xml.
 			"cmd",
 			"/c",
 			"echo",
@@ -117,7 +117,7 @@ func buildProbeExecCommand(family vm.OsFamily) []string {
 func GenerateStartupScriptSecret(virtualMachine *kubevirtv1.VirtualMachine, opts VirtualMachineOptions) (*corev1.Secret, error) {
 	key, filename, script := "userData", "cloud-init.yaml", opts.UserProvisioning.CloudInit
 	if opts.OsFamily == vm.Windows {
-		key, filename, script = "autounattend.xml", "autounattend.xml", opts.UserProvisioning.Sysprep
+		key, filename, script = "autounattend.xml", "autounattend.xml", opts.UserProvisioning.Autounattend
 	}
 	if script == "" {
 		rawData, err := scripts.ReadFile(path.Join("scripts", filename))
@@ -207,7 +207,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			},
 		}
 	}
-	dataVolumeTemplates := generateDataVolumeTemplates(opts.OsFamily, dataVolumeSource, opts.Name, opts.DiskSpace)
+	dataVolumeTemplates := generateDataVolumeTemplates(opts.OsFamily, dataVolumeSource, opts.Name, opts.DiskSize)
 
 	return &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -218,11 +218,11 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 			RunStrategy: &runStrategy,
 			Preference: &kubevirtv1.PreferenceMatcher{
 				Kind: "VirtualMachineClusterPreference",
-				Name: opts.OsDistribution,
+				Name: opts.Preference,
 			},
 			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 				Spec: kubevirtv1.VirtualMachineInstanceSpec{
-					NodeSelector: opts.NodeSelectors,
+					NodeSelector: opts.NodeSelector,
 					Tolerations:  opts.Tolerations,
 					ReadinessProbe: &kubevirtv1.Probe{
 						Handler: kubevirtv1.Handler{
@@ -270,7 +270,7 @@ func GenerateVirtualMachine(opts VirtualMachineOptions) *kubevirtv1.VirtualMachi
 	}
 }
 
-func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSpace string) []kubevirtv1.DataVolumeTemplateSpec {
+func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVolumeSource, vmName, vmPrimaryDiskSize string) []kubevirtv1.DataVolumeTemplateSpec {
 	primaryDiskSource := dvSource
 	if family == vm.Windows {
 		// Disk empty and used as target by Windows install
@@ -288,7 +288,7 @@ func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVol
 					},
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSpace),
+							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSize),
 						},
 					},
 				},
@@ -309,7 +309,7 @@ func generateDataVolumeTemplates(family vm.OsFamily, dvSource cdiv1beta1.DataVol
 					},
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSpace),
+							corev1.ResourceStorage: resource.MustParse(vmPrimaryDiskSize),
 						},
 					},
 				},
@@ -411,7 +411,7 @@ func generateDisks(family vm.OsFamily) []kubevirtv1.Disk {
 					},
 				},
 			},
-			// Disk F: (sysprep)
+			// Disk F: (autounattend.xml)
 			kubevirtv1.Disk{
 				Name: string(SysprepInitVolumeDiskMapping),
 				DiskDevice: kubevirtv1.DiskDevice{

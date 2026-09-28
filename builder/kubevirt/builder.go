@@ -1,6 +1,6 @@
 //go:generate packer-sdc mapstructure-to-hcl2 -type Config
 
-package iso
+package kubevirt
 
 import (
 	"context"
@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	builderId = "kubevirt.iso"
+	builderId = "kubevirt"
 )
 
 type Config struct {
@@ -195,23 +195,23 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 		&stepDef.StepDeployVM{
 			Clients: b.clients,
 			VmOptions: generator.VirtualMachineOptions{
-				Name:           b.config.VirtualMachineName,
-				Namespace:      b.config.KubernetesNamespace,
-				NodeSelectors:  b.config.KubernetesNodeSelector,
-				Tolerations:    decodeTolerations(b.config.KubernetesTolerations),
-				OsDistribution: b.config.VirtualMachinePreference,
-				OsFamily:       osFamily,
-				DiskSpace:      b.config.VirtualMachineDiskSize,
-				CPU:            b.config.VirtualMachineCPU,
-				Memory:         b.config.VirtualMachineMemory,
+				Name:         b.config.VirtualMachineName,
+				Namespace:    b.config.KubernetesNamespace,
+				NodeSelector: b.config.KubernetesNodeSelector,
+				Tolerations:  decodeTolerations(b.config.KubernetesTolerations),
+				Preference:   b.config.VirtualMachinePreference,
+				OsFamily:     osFamily,
+				DiskSize:     b.config.VirtualMachineDiskSize,
+				CPU:          b.config.VirtualMachineCPU,
+				Memory:       b.config.VirtualMachineMemory,
 				ImageSource: generator.ImageSource{
 					URL:                b.config.SourceUrl,
 					AWSAccessKeyId:     b.config.SourceAWSAccessKeyId,
 					AWSSecretAccessKey: b.config.SourceAWSSecretAccessKey,
 				},
 				UserProvisioning: generator.UserProvisioning{
-					CloudInit: b.config.VirtualMachineCloudInit,
-					Sysprep:   b.config.VirtualMachineAutounattend,
+					CloudInit:    b.config.VirtualMachineCloudInit,
+					Autounattend: b.config.VirtualMachineAutounattend,
 				},
 			},
 		},
@@ -224,8 +224,8 @@ func (b *Builder) Run(ctx context.Context, ui packer.Ui, hook packer.Hook) (pack
 			Timeout:          b.config.VirtualMachineInstallTimeOut,
 		},
 		&stepDef.StepWaitForVM{
-			Clients:             b.clients,
-			VmDeploymentTimeOut: b.config.VirtualMachineInstallTimeOut,
+			Clients:          b.clients,
+			VmInstallTimeOut: b.config.VirtualMachineInstallTimeOut,
 		},
 		&stepDef.StepPortForwardVM{
 			Clients: b.clients,

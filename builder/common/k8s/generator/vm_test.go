@@ -17,7 +17,7 @@ func TestGenerateVirtualMachineResources(t *testing.T) {
 		Name:      "base-ubuntu",
 		Namespace: "packer",
 		OsFamily:  vm.Linux,
-		DiskSpace: "10Gi",
+		DiskSize:  "10Gi",
 		CPU:       "2",
 		Memory:    "4Gi",
 	})
@@ -36,35 +36,35 @@ func TestGenerateStartupScriptSecretForWindows(t *testing.T) {
 		Name:      "base-windows",
 		Namespace: "packer",
 		OsFamily:  vm.Windows,
-		DiskSpace: "15Gi",
+		DiskSize:  "15Gi",
 		CPU:       "2",
 		Memory:    "4Gi",
 	})
-	defaultSysprep, err := scripts.ReadFile("scripts/autounattend.xml")
+	defaultAutounattend, err := scripts.ReadFile("scripts/autounattend.xml")
 	if err != nil {
 		t.Fatalf("failed to read the default answer file: %v", err)
 	}
 
 	for name, test := range map[string]struct {
-		sysprep  string
-		expected string
+		autounattend string
+		expected     string
 	}{
-		"custom answer file":  {sysprep: "<unattend>custom</unattend>", expected: "<unattend>custom</unattend>"},
-		"default answer file": {sysprep: "", expected: string(defaultSysprep)},
+		"custom answer file":  {autounattend: "<unattend>custom</unattend>", expected: "<unattend>custom</unattend>"},
+		"default answer file": {autounattend: "", expected: string(defaultAutounattend)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			secret, err := GenerateStartupScriptSecret(virtualMachine, VirtualMachineOptions{
 				Name:             "base-windows",
 				Namespace:        "packer",
-				OsDistribution:   "windows.10.virtio",
+				Preference:       "windows.10.virtio",
 				OsFamily:         vm.Windows,
-				UserProvisioning: UserProvisioning{Sysprep: test.sysprep},
+				UserProvisioning: UserProvisioning{Autounattend: test.autounattend},
 			})
 			if err != nil {
 				t.Fatalf("failed to generate the startup script secret: %v", err)
 			}
-			if sysprep := secret.StringData["autounattend.xml"]; sysprep != test.expected {
-				t.Errorf("expected answer file '%.40s', got: '%.40s'", test.expected, sysprep)
+			if autounattend := secret.StringData["autounattend.xml"]; autounattend != test.expected {
+				t.Errorf("expected answer file '%.40s', got: '%.40s'", test.expected, autounattend)
 			}
 		})
 	}
@@ -75,7 +75,7 @@ func TestGenerateVirtualMachineRunStrategy(t *testing.T) {
 		Name:      "base-ubuntu",
 		Namespace: "packer",
 		OsFamily:  vm.Linux,
-		DiskSpace: "10Gi",
+		DiskSize:  "10Gi",
 		CPU:       "2",
 		Memory:    "4Gi",
 	})
@@ -126,7 +126,7 @@ func generateWindowsVirtualMachine() *kubevirtv1.VirtualMachine {
 		Name:        "base-windows",
 		Namespace:   "packer",
 		OsFamily:    vm.Windows,
-		DiskSpace:   "64Gi",
+		DiskSize:    "64Gi",
 		CPU:         "2",
 		Memory:      "4Gi",
 		ImageSource: ImageSource{URL: "https://example.com/windows.iso"},

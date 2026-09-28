@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"packer-plugin-kubevirt/builder/iso"
+	"packer-plugin-kubevirt/builder/kubevirt"
 	"packer-plugin-kubevirt/post-processor/datasource"
 	"packer-plugin-kubevirt/post-processor/oci"
 	"packer-plugin-kubevirt/post-processor/s3"
@@ -14,7 +14,7 @@ import (
 
 func main() {
 	pps := plugin.NewSet()
-	pps.RegisterBuilder(plugin.DEFAULT_NAME, new(iso.Builder))
+	pps.RegisterBuilder(plugin.DEFAULT_NAME, new(kubevirt.Builder))
 	pps.RegisterPostProcessor("s3", new(s3.PostProcessor))
 	pps.RegisterPostProcessor("oci", new(oci.PostProcessor))
 	pps.RegisterPostProcessor("datasource", new(datasource.PostProcessor))
