@@ -17,12 +17,12 @@ variable "vm_memory" {
 }
 
 variable "destination_s3_bucket" {
-  description = "AWS S3 Bucket where exported VM images are stored"
+  description = "S3 bucket where exported VM images are stored"
   type        = string
 }
 
 variable "destination_s3_key_prefix" {
-  description = "AWS S3 Key prefix for all the exported VM images"
+  description = "Key prefix for all the exported VM images"
   type        = string
   default     = "exports/"
 

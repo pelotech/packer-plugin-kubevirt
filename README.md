@@ -41,8 +41,8 @@ Everything runs in the cluster, as Virtual Machines and jobs. Nothing else than 
 
 | Component | Type | What it does |
 |---|---|---|
-| [kubevirt](docs/builders/builder.mdx) | builder | Creates and provisions the Virtual Machine |
-| [kubevirt-s3](docs/post-processors/post-processor.mdx) | post-processor | Uploads the disk to S3 or S3-compatible storage, as it is or converted to `qcow2`, `vmdk`, `vhdx` or `vdi` |
+| [kubevirt](docs/builders/kubevirt.mdx) | builder | Creates and provisions the Virtual Machine |
+| [kubevirt-s3](docs/post-processors/s3.mdx) | post-processor | Uploads the disk to S3 or S3-compatible storage, as it is or converted to `qcow2`, `vmdk`, `vhdx` or `vdi` |
 | [kubevirt-oci](docs/post-processors/oci.mdx) | post-processor | Pushes the disk to a container registry as a containerDisk image, in `qcow2` or `raw` |
 | [kubevirt-datasource](docs/post-processors/datasource.mdx) | post-processor | Imports the disk into a volume of the cluster and points a DataSource to it |
 
@@ -127,12 +127,12 @@ This keeps the image in the cluster. To export it somewhere else as well, chain 
 ```
 
 The [Ubuntu example](example/ubuntu-26.04) is a complete template, the one built by the integration test.
-For Windows, start from the [Windows 11 example](example/windows-11) and read the [Windows section](docs/builders/builder.mdx#windows) of the builder.
+For Windows, start from the [Windows 11 example](example/windows-11) and read the [Windows section](docs/builders/kubevirt.mdx#windows) of the builder.
 
 ## Documentation
 
-- [Builder](docs/builders/builder.mdx)
-- [S3 post-processor](docs/post-processors/post-processor.mdx)
+- [Builder](docs/builders/kubevirt.mdx)
+- [S3 post-processor](docs/post-processors/s3.mdx)
 - [OCI post-processor](docs/post-processors/oci.mdx)
 - [DataSource post-processor](docs/post-processors/datasource.mdx)
 
