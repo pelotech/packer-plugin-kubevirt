@@ -4,6 +4,18 @@ variable "kubernetes_namespace" {
   default     = "packer"
 }
 
+variable "build_names" {
+  description = "Names of the builds run side by side"
+  type        = list(string)
+  default     = ["a", "b"]
+}
+
+variable "shared_kubernetes_name" {
+  description = "Kubernetes name given to every build (Empty gives each build its own)"
+  type        = string
+  default     = ""
+}
+
 variable "vm_cpu" {
   description = "CPUs requested by the virtual machine"
   type        = string

@@ -12,7 +12,6 @@ packer {
 }
 
 source "kubevirt-iso" "linux" {
-  kubernetes_name      = "base-ubuntu-2604"
   kubernetes_namespace = "${var.kubernetes_namespace}-linux"
   kubernetes_node_selectors = {
     "kubevirt.io/schedulable" = "true"
@@ -35,13 +34,18 @@ source "kubevirt-iso" "linux" {
   vm_export_timeout     = "10m" # Optional, default to '5m'
   source_url            = "https://cloud-images.ubuntu.com/minimal/releases/resolute/release/ubuntu-26.04-minimal-cloudimg-amd64.img"
   communicator          = "ssh" # Optional, default to 'ssh'
-  ssh_port              = 2222  # Optional, default to a free local port
 }
 
 build {
-  sources = [
-    "source.kubevirt-iso.linux"
-  ]
+  # one build per name, run side by side in the same namespace
+  dynamic "source" {
+    for_each = var.build_names
+    labels   = ["kubevirt-iso.linux"]
+    content {
+      name            = source.value
+      kubernetes_name = var.shared_kubernetes_name != "" ? var.shared_kubernetes_name : "base-ubuntu-2604-${source.value}"
+    }
+  }
 
   provisioner "ansible" {
     playbook_file = "${path.root}/ansible/playbook.yaml"
@@ -75,6 +79,6 @@ build {
 
   post-processor "kubevirt-datasource" {
     name            = "datasource"
-    datasource_name = "base-ubuntu" # Optional, default to the Kubernetes name
+    datasource_name = "base-ubuntu-${source.name}" # Optional, default to the Kubernetes name
   }
 }

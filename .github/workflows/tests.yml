@@ -40,20 +40,25 @@ jobs:
       - name: unit tests
         run: make test
 
+  # test/parallel-builds only: two builds of the example side by side in one namespace
   build:
     runs-on: ubuntu-26.04
-    name: Run Packer (${{ matrix.export }})
+    name: Run Packer (${{ matrix.case }})
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        export: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["s3", "oci", "datasource", "all"]' || github.ref == 'refs/heads/main' && '["all"]' || '["s3", "oci", "datasource"]') }}
+        # loop: each build has its own Kubernetes name, same-name: both builds share one
+        case: ["loop", "same-name"]
     env:
       working-directory: ./example/ubuntu-26.04
-      # the Virtual Machine of the example, its export has the same name
-      VM_NAME: base-ubuntu-2604
+      CASE: ${{ matrix.case }}
       VM_NAMESPACE: packer-linux
-      # post-processors of the example this leg does not run, by name
-      PACKER_EXCEPT: ${{ matrix.export == 's3' && 'oci,datasource' || matrix.export == 'oci' && 's3,datasource' || matrix.export == 'datasource' && 's3,oci' || '' }}
+      # Kubernetes names of the builds a and b
+      VM_NAMES: ${{ matrix.case == 'same-name' && 'base-ubuntu-2604' || 'base-ubuntu-2604-a base-ubuntu-2604-b' }}
+      PKR_VAR_shared_kubernetes_name: ${{ matrix.case == 'same-name' && 'base-ubuntu-2604' || '' }}
+      # both builds would push the same tag
+      PACKER_EXCEPT: oci
       S3_BUCKET: pelotech-vm-images
       PKR_VAR_destination_aws_s3_bucket: pelotech-vm-images
       # region of .github/actions/garage/garage.yaml
@@ -61,13 +66,8 @@ jobs:
       # the upload runs in a pod, it reaches Garage through its service
       PKR_VAR_destination_s3_endpoint_url: "http://garage.garage.svc.cluster.local:3900"
       PKR_VAR_destination_aws_s3_key_prefix: "ci/"
-      OCI_REPOSITORY: pelotech/base-ubuntu
-      OCI_TAG: "26.04"
-      # the push runs in a pod, it reaches the registry through its service
-      PKR_VAR_destination_oci_image: "registry.registry.svc.cluster.local:5000/pelotech/base-ubuntu:26.04"
-      PKR_VAR_destination_oci_registry_insecure: "true"
-      # sized for GitHub-hosted runners (4 CPUs, 16Gi)
-      PKR_VAR_vm_cpu: "2"
+      # two VMs of 2 CPUs and the control plane do not fit in the 4 CPUs of the runner
+      PKR_VAR_vm_cpu: "1"
       PKR_VAR_vm_memory: "4Gi"
     steps:
       - name: repository checkout
@@ -85,50 +85,15 @@ jobs:
         uses: ./.github/actions/cluster
 
       - name: garage install
-        if: matrix.export == 's3' || matrix.export == 'all'
         uses: ./.github/actions/garage
         with:
           bucket: ${{ env.S3_BUCKET }}
 
-      - name: registry install
-        if: matrix.export == 'oci' || matrix.export == 'all'
-        run: |
-          kubectl create namespace registry
-          kubectl apply -f .github/registry.yaml
-          kubectl rollout status deployment/registry --namespace registry --timeout=5m
-
       - name: display runner node / capabilities
         run: |
-          # Print CPU information
-          echo "CPU Information:"
-          echo "----------------"
-          lscpu | grep -E '^Architecture|^CPU\(s\)|^Model name|^Thread|^Core|^Socket|^Vendor ID'
-          echo ""
-
-          # Print Memory information
-          echo "Memory Information:"
-          echo "-------------------"
+          lscpu | grep -E '^CPU\(s\)|^Model name'
           free -h
-          echo ""
-
-          # Print Disk Space information
-          echo "Disk Space Information:"
-          echo "-----------------------"
-          df -hT | awk '{print $1, $2, $3, $4, $5, $6, $7}'
-          echo ""
-
-          echo "KVM module state:"
-          echo "-----------------------"
-          if lsmod | grep -q kvm; then
-            echo "KVM modules are loaded."
-          else
-            echo "KVM modules are not loaded."
-          fi
-          echo ""
-
-          echo "Kubernetes worker nodes:"
-          echo "-----------------------"
-          kubectl get nodes -o jsonpath='{range .items[*]}{"["}{.metadata.name}{"] cpu: "}{.status.capacity.cpu}{"; memory: "}{.status.capacity.memory}{"\n"}{end}'
+          kubectl describe nodes | sed -n '/^Allocatable:/,/^Events:/p'
 
       - name: packer format
         run: |
@@ -142,10 +107,54 @@ jobs:
       - name: packer build
         working-directory: ${{ env.working-directory }}
         run: |
-          PACKER_LOG=1 packer build ${PACKER_EXCEPT:+-except=${PACKER_EXCEPT}} .
+          set -o pipefail
+          # what the node has scheduled while both builds run
+          (for minute in 4 8; do sleep 240; { echo "--- after ${minute} minutes"; kubectl get pods,virtualmachineinstances --namespace "${VM_NAMESPACE}" --output wide; kubectl describe nodes | sed -n '/^Allocated resources:/,/^Events:/p'; } >> "${RUNNER_TEMP}/node.log" 2>&1; done) &
+          status=0
+          PACKER_LOG=1 PACKER_LOG_PATH="${RUNNER_TEMP}/packer-debug.log" packer build -color=false -timestamp-ui ${PACKER_EXCEPT:+-except=${PACKER_EXCEPT}} . 2>&1 | tee "${RUNNER_TEMP}/packer.log" || status=$?
+          echo "packer build exit code: ${status}"
+          echo "PACKER_EXIT=${status}" >> "${GITHUB_ENV}"
+          # the same-name leg expects a failed build, the steps below judge it
+          if [ "${CASE}" = loop ]; then exit "${status}"; fi
 
-      - name: check the image in the bucket
-        if: matrix.export == 's3' || matrix.export == 'all'
+      - name: display the node while both builds ran
+        if: always()
+        run: |
+          cat "${RUNNER_TEMP}/node.log" || true
+
+      - name: check that the two builds overlapped
+        if: matrix.case == 'loop'
+        run: |
+          log="${RUNNER_TEMP}/packer.log"
+          grep -E "kubevirt-iso\.[ab]: (creating Virtual Machine |port-forwarding step|export step has completed)|Build 'kubevirt-iso\.[ab]' (finished|errored)" "${log}"
+          at() { date -d "$(grep -m1 -E "$1" "${log}" | cut -d' ' -f1 | sed 's/:$//')" +%s; }
+          start_a=$(at "==> kubevirt-iso\.a: creating Virtual Machine ")
+          end_a=$(at "==> kubevirt-iso\.a: export step has completed")
+          start_b=$(at "==> kubevirt-iso\.b: creating Virtual Machine ")
+          end_b=$(at "==> kubevirt-iso\.b: export step has completed")
+          overlap=$(( (end_a < end_b ? end_a : end_b) - (start_a > start_b ? start_a : start_b) ))
+          echo "a: ${start_a} to ${end_a} ($((end_a - start_a))s), b: ${start_b} to ${end_b} ($((end_b - start_b))s), overlap: ${overlap}s"
+          test "${overlap}" -gt 0
+
+      - name: check the outcome of the builds sharing one name
+        if: matrix.case == 'same-name'
+        run: |
+          log="${RUNNER_TEMP}/packer.log"
+          grep -E "already exists|creating Virtual Machine |export step has completed|has been deleted|has been kept|Build 'kubevirt-iso\.[ab]' (finished|errored)" "${log}"
+          test "${PACKER_EXIT}" -ne 0
+          finished=$(sed -nE "s/.*Build 'kubevirt-iso\.([a-z]+)' finished.*/\1/p" "${log}")
+          errored=$(sed -nE "s/.*Build 'kubevirt-iso\.([a-z]+)' errored.*/\1/p" "${log}")
+          echo "finished: [${finished}], errored: [${errored}]"
+          test "$(echo "${finished}" | wc -w)" -eq 1
+          test "$(echo "${errored}" | wc -w)" -eq 1
+          grep -E "Build 'kubevirt-iso\.${errored}' errored.*failed to create Virtual Machine ${VM_NAMESPACE}/${VM_NAMES}: .*already exists" "${log}"
+          # the failed build stopped at the VM create and deleted nothing
+          if grep -E "kubevirt-iso\.${errored}: .*(has been deleted|waiting for Virtual Machine|creating Virtual Machine Export)" "${log}"; then exit 1; fi
+          grep -E "==> kubevirt-iso\.${finished}: export step has completed for Virtual Machine ${VM_NAMESPACE}/${VM_NAMES}" "${log}"
+          echo "FINISHED=${finished}" >> "${GITHUB_ENV}"
+          echo "ERRORED=${errored}" >> "${GITHUB_ENV}"
+
+      - name: check the images in the bucket
         env:
           AWS_ACCESS_KEY_ID: ${{ env.PKR_VAR_destination_aws_access_key_id }}
           AWS_SECRET_ACCESS_KEY: ${{ env.PKR_VAR_destination_aws_secret_access_key }}
@@ -153,52 +162,42 @@ jobs:
         run: |
           kubectl port-forward --namespace garage service/garage 3900:3900 &
           curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:3900
-          aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_aws_s3_key_prefix}base-ubuntu-2604.img.gz"
+          aws s3api list-objects-v2 --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --query 'Contents[].[Key,Size,LastModified]' --output text
+          for name in ${VM_NAMES}; do
+            aws s3api head-object --endpoint-url http://localhost:3900 --bucket "${S3_BUCKET}" --key "${PKR_VAR_destination_aws_s3_key_prefix}${name}.img.gz"
+          done
 
-      - name: check the image in the registry
-        if: matrix.export == 'oci' || matrix.export == 'all'
+      - name: check the DataSources
         run: |
-          kubectl port-forward --namespace registry service/registry 5000:5000 &
-          curl --silent --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://localhost:5000/v2/
-          manifest="$(curl --silent --fail --header 'Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json' "http://localhost:5000/v2/${OCI_REPOSITORY}/manifests/${OCI_TAG}")"
-          config="$(curl --silent --fail --location "http://localhost:5000/v2/${OCI_REPOSITORY}/blobs/$(echo "${manifest}" | jq --raw-output .config.digest)")"
-          echo "${config}" | jq --exit-status '.config.Env | index("INSTANCETYPE_KUBEVIRT_IO_DEFAULT_PREFERENCE=ubuntu")'
-          echo "${manifest}" | jq --exit-status '.layers | length == 1'
+          if [ "${CASE}" = loop ]; then expected="a b"; else expected="${FINISHED}"; fi
+          for build in ${expected}; do
+            kubectl wait "datasource/base-ubuntu-${build}" --namespace "${VM_NAMESPACE}" --for=condition=Ready --timeout=1m
+            test "$(kubectl get datasource "base-ubuntu-${build}" --namespace "${VM_NAMESPACE}" --output jsonpath='{.metadata.labels.instancetype\.kubevirt\.io/default-preference}')" = ubuntu
+          done
+          if [ "${CASE}" = same-name ]; then
+            if kubectl get datasource "base-ubuntu-${ERRORED}" --namespace "${VM_NAMESPACE}"; then exit 1; fi
+          fi
+          kubectl get datasources --namespace "${VM_NAMESPACE}"
 
-      - name: check the DataSource and boot a Virtual Machine from it
-        if: matrix.export == 'datasource' || matrix.export == 'all'
+      - name: check that the builds leave nothing behind
         run: |
-          kubectl wait datasource/base-ubuntu --namespace packer-linux --for=condition=Ready --timeout=1m
-          test "$(kubectl get datasource base-ubuntu --namespace packer-linux --output jsonpath='{.metadata.labels.instancetype\.kubevirt\.io/default-preference}')" = ubuntu
-          kubectl apply -f .github/boot-test.yaml
-          test "$(kubectl get virtualmachine boot-test --namespace packer-linux --output jsonpath='{.spec.preference.name}')" = ubuntu
-          kubectl wait virtualmachine/boot-test --namespace packer-linux --for=condition=Ready --timeout=10m
-          kubectl wait virtualmachineinstance/boot-test --namespace packer-linux --for=condition=AgentConnected --timeout=5m
+          for name in ${VM_NAMES}; do
+            timeout 120 bash -c "while kubectl get virtualmachineexport ${name} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get virtualmachine ${name} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${name}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
+          done
 
-      - name: check that the disk outlives a restart of the export server
-        # the s3 post-processor keeps its export
-        if: matrix.export == 's3'
+      - name: display the namespace
+        if: always()
         run: |
-          kubectl delete pod "virt-export-${VM_NAME}" --namespace "${VM_NAMESPACE}"
-          timeout 300 bash -c "until kubectl get pod virt-export-${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
-          kubectl wait pod "virt-export-${VM_NAME}" --namespace "${VM_NAMESPACE}" --for=condition=Ready --timeout=5m
-          test -z "$(kubectl get persistentvolumeclaim "${VM_NAME}-source" --namespace "${VM_NAMESPACE}" --output jsonpath='{.metadata.deletionTimestamp}')"
+          kubectl get virtualmachines,virtualmachineinstances,virtualmachineexports,datavolumes,datasources,persistentvolumeclaims,jobs,secrets,configmaps,pods --namespace "${VM_NAMESPACE}" --output wide || true
 
-          kubectl delete virtualmachineexport "${VM_NAME}" --namespace "${VM_NAMESPACE}"
-          timeout 120 bash -c "while kubectl get virtualmachine ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${VM_NAME}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
-
-      - name: check that the build leaves nothing behind
-        # the datasource post-processor, the last one, deletes the export
-        if: matrix.export == 'datasource' || matrix.export == 'all'
+      - name: display the packer debug log
+        if: always()
         run: |
-          timeout 120 bash -c "while kubectl get virtualmachineexport ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get virtualmachine ${VM_NAME} --namespace ${VM_NAMESPACE} > /dev/null 2>&1 || kubectl get persistentvolumeclaim ${VM_NAME}-source --namespace ${VM_NAMESPACE} > /dev/null 2>&1; do sleep 2; done"
+          cat "${RUNNER_TEMP}/packer-debug.log" || true
 
       - name: display cluster state
         if: failure()
         run: |
           kubectl get virtualmachines,virtualmachineinstances,datavolumes,datasources,virtualmachineexports,persistentvolumeclaims,jobs,pods --all-namespaces --output wide
-          kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 50
-          kubectl describe pods --namespace garage
-          kubectl logs --namespace garage deployment/garage --tail 100 || true
-          kubectl describe pods --namespace registry
-          kubectl logs --namespace registry deployment/registry --tail 100 || true
+          kubectl get events --all-namespaces --sort-by=.lastTimestamp | tail -n 80
+          kubectl describe pods --namespace "${VM_NAMESPACE}" || true
