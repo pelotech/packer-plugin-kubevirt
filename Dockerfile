@@ -1,5 +1,5 @@
 # Holds the plugin the way Packer expects it in its plugin directory, to be copied into another image
-FROM --platform=$BUILDPLATFORM busybox:1.37.0 AS plugin
+FROM --platform=$BUILDPLATFORM busybox:1.38.0 AS plugin
 ARG TARGETPLATFORM
 WORKDIR /plugins/github.com/pelotech/kubevirt
 COPY $TARGETPLATFORM/packer-plugin-kubevirt_* ./
