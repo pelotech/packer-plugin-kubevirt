@@ -47,6 +47,11 @@
   ],
   packageRules: [
     {
+      // approved by the "approve Renovate" workflow, merged once the required checks pass
+      matchUpdateTypes: ["minor", "patch", "pin", "digest"],
+      automerge: true,
+    },
+    {
       // pinned by a replace directive to the version k8s.io/apimachinery requires
       matchDatasources: ["go"],
       matchPackageNames: ["k8s.io/kube-openapi"],
