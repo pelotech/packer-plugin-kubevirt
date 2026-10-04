@@ -1,0 +1,32 @@
+# It approves the pull requests that Renovate set to merge on its own, so they merge once the required checks pass.
+# A push dismisses the approval, so it approves again after each push.
+# Only pull requests whose commits Renovate wrote through GitHub are approved.
+name: approve Renovate
+
+on:
+  pull_request:
+    types: [auto_merge_enabled, synchronize]
+
+permissions: {}
+
+jobs:
+  approve:
+    if: github.event.pull_request.user.login == 'renovate[bot]' && github.event.pull_request.auto_merge
+    runs-on: ubuntu-26.04
+    permissions:
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Check that Renovate wrote every commit
+        run: |
+          others=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | select(.author.login != "renovate[bot]" or .committer.login != "web-flow" or (.commit.verification.verified | not)) | .sha')
+          if [ -n "$others" ]; then
+            echo "::error::commits not written by Renovate: $others"
+            exit 1
+          fi
+      - name: Approve
+        run: gh pr review "$PR_NUMBER" --repo "$REPO" --approve --body "Renovate update, approved to merge once the checks pass."
