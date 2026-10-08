@@ -54,7 +54,7 @@ jobs:
         run: git fetch --prune --unshallow
 
       - name: Set up the tools
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
 
       - name: Describe plugin
         id: plugin_describe
