@@ -23,7 +23,7 @@ jobs:
           ref: ${{ github.event.inputs.branch }}
 
       # Ensure that Docs are Compiled
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@v5
       - shell: bash
         run: make generate
 

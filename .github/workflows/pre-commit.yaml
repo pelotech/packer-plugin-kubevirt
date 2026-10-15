@@ -13,6 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: tools setup
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@v5
       - name: pre-commit
         run: prek run --all-files --show-diff-on-failure
