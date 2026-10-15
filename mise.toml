@@ -7,7 +7,7 @@ kubectl = "1.37.1"
 prek = "0.5.5"
 goreleaser = "2.18.2"
 actionlint = "1.7.12"
-ansible-core = "2.21.4"
+ansible-core = "2.21.5"
 aws-cli = "2.37.9"
 jq = "1.8.2"
 # virtctl, and the version of KubeVirt the tests install
