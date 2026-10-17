@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/pelotech/packer-plugin-kubevirt/compare/v0.2.1...v0.2.2) (2026-10-17)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/hashicorp/packer-plugin-sdk to v0.6.12 ([#151](https://github.com/pelotech/packer-plugin-kubevirt/issues/151)) ([90b9378](https://github.com/pelotech/packer-plugin-kubevirt/commit/90b9378ebc546ad2bd8820826054b4d24637968c))
+* **deps:** update module golang.org/x/crypto to v0.58.0 ([#158](https://github.com/pelotech/packer-plugin-kubevirt/issues/158)) ([7737bea](https://github.com/pelotech/packer-plugin-kubevirt/commit/7737bea0cbf3c5bf1487211055da3e879214d1ea))
+
 ## [0.2.1](https://github.com/pelotech/packer-plugin-kubevirt/compare/v0.2.0...v0.2.1) (2026-09-28)
 
 
