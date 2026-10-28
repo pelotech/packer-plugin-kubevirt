@@ -186,7 +186,7 @@ func buildJobName(prefix, exportName string) string {
 }
 
 func generateDownloadContainer(secretName, downloadedFilename, exportServerUrl string, raw bool) corev1.Container {
-	image := "curlimages/curl:8.22.0"
+	image := "curlimages/curl:8.23.0"
 	command := []string{
 		"/bin/sh",
 		"-c",
