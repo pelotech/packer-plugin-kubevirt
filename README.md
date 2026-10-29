@@ -77,7 +77,7 @@ Then run `packer init`. It installs the latest release. To use what is on `main`
 Each release is also published as a container image, to copy the plugin into your own image:
 
 ```dockerfile
-FROM hashicorp/packer:1.16.1
+FROM hashicorp/packer:1.16.2
 COPY --from=ghcr.io/pelotech/packer-plugin-kubevirt:<version> / /root/.config/packer/plugins/
 ```
 
