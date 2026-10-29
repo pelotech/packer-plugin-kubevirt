@@ -8,7 +8,7 @@ prek = "0.5.7"
 goreleaser = "2.18.3"
 actionlint = "1.7.12"
 ansible-core = "2.21.5"
-aws-cli = "2.38.4"
+aws-cli = "2.38.5"
 jq = "1.8.2"
 # virtctl, and the version of KubeVirt the tests install
 "github:kubevirt/kubevirt" = { version = "1.9.1", version_prefix = "v", matching = "virtctl", rename_exe = "virtctl" }
